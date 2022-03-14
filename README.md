@@ -2,7 +2,7 @@
 ## Term Project
 ### Briana Oursler, Winter 22
 
-Assembler is a project that accepts an input file with a line by line list of assembly instructions supporting operations add, mov, xor, sub, mul, and, and. Assembler parses intel type assembly syntax. Current limitations include:
+Assembler is a project that accepts an input file with a line by line list of assembly instructions supporting operations add, mov, xor, sub, mul, and, and. Assembler parses intel style assembly syntax. Current limitations include:
  - Limited constant expression evaluation (effectively handles sums on memoperands)
  - Errors represented as strings
  - Does not output machine code

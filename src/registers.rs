@@ -1,22 +1,106 @@
 #![allow(non_upper_case_globals)]
+use std::fmt;
 use std::str::FromStr;
 
 #[repr(u8)]
-#[derive(Copy, Clone, PartialEq, Debug)]
+#[derive(Copy, Clone, PartialEq, Debug, Eq)]
 enum RegisterType {
     GPR,
 }
 
 #[repr(C, align(4))]
-#[derive(Copy, Clone, PartialEq, Debug)]
+#[derive(Copy, Clone, PartialEq, Debug, Eq)]
 pub struct Register {
     r#type: RegisterType,
     index: u8,
     size: u8, // log_2(num_reg_bytes)
 }
 
+impl fmt::Display for Register {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            match *self {
+                rax => "rax",
+                rcx => "rcx",
+                rdx => "rdx",
+                rbx => "rbx",
+                rsp => "rsp",
+                rbp => "rbp",
+                rsi => "rsi",
+                rdi => "rdi",
+                r8 => "r8",
+                r9 => "r9",
+                r10 => "r10",
+                r11 => "r11",
+                r12 => "r12",
+                r13 => "r13",
+                r14 => "r14",
+                r15 => "r15",
+
+                //32-bit general purpose registers
+                raxd => "raxd",
+                rcxd => "rcxd",
+                rdxd => "rdxd",
+                rbxd => "rbxd",
+                rspd => "rspd",
+                rbpd => "rbpd",
+                rsid => "rsid",
+                rdid => "rdid",
+                r8d => "r8d",
+                r9d => "r9d",
+                r10d => "r10d",
+                r11d => "r11d",
+                r12d => "r12d",
+                r13d => "r13d",
+                r14d => "r14d",
+                r15d => "r15d",
+
+                //16-bit general purpose registers
+                raxw => "raxw",
+                rcxw => "rcxw",
+                rdxw => "rdxw",
+                rbxw => "rbxw",
+                rspw => "rspw",
+                rbpw => "rbpw",
+                rsiw => "rsiw",
+                rdiw => "rdiw",
+                r8w => "r8w",
+                r9w => "r9w",
+                r10w => "r10w",
+                r11w => "r11w",
+                r12w => "r12w",
+                r13w => "r13w",
+                r14w => "r14w",
+                r15w => "r15w",
+
+                //8-bit registers
+                raxb => "raxb",
+                rcxb => "rcxb",
+                rdxb => "rdxb",
+                rbxb => "rbxb",
+                rspb => "rspb",
+                rbpb => "rbpb",
+                rsib => "rsib",
+                rdib => "rdib",
+                r8b => "r8b",
+                r9b => "r9b",
+                r10b => "r10b",
+                r11b => "r11b",
+                r12b => "r12b",
+                r13b => "r13b",
+                r14b => "r14b",
+                r15b => "r15b",
+                _ => panic!("Not a register"),
+            }
+        )
+    }
+}
+
 impl FromStr for Register {
     type Err = String;
+
     fn from_str(s: &str) -> Result<Self, String> {
         match s {
             //64-bit general purpose registers
@@ -465,6 +549,7 @@ pub const bl: Register = rbxb;
 #[cfg(test)]
 mod tests {
     use super::*;
+
     #[test]
     fn test_register_from_str() {
         assert_eq!("rax".parse::<Register>(), Ok(rax));

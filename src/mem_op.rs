@@ -1,4 +1,5 @@
 use crate::registers::Register;
+use std::fmt;
 use std::str::FromStr;
 
 //[source + scale * index + base]
@@ -8,6 +9,31 @@ pub struct MemOperand {
     pub index: Option<Register>,
     pub scale: u8,
     pub displacement: i32,
+}
+
+impl fmt::Display for MemOperand {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "[")?;
+        let sep = match self.source {
+            Some(source) => {
+                write!(f, "{}", source)?;
+                " + "
+            }
+            None => "",
+        };
+
+        let sep = match self.index {
+            Some(index) => {
+                write!(f, "{}{} * {}", sep, self.scale, index)?;
+                " + "
+            }
+            None => sep,
+        };
+        if self.displacement != 0 {
+            write!(f, "{}{}", sep, self.displacement)?;
+        }
+        write!(f, "]")
+    }
 }
 
 impl FromStr for MemOperand {
@@ -132,6 +158,7 @@ impl FromStr for MemOperand {
 mod tests {
     use super::*;
     use crate::registers::{r8, rax, rcx};
+
     #[test]
     fn test_mem_operand_from_str() {
         assert_eq!(

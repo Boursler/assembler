@@ -3,6 +3,11 @@ mod registers;
 
 use mem_op::MemOperand;
 use registers::Register;
+use std::env;
+use std::fmt;
+use std::fs::File;
+use std::io::prelude::*;
+use std::io::BufReader;
 use std::str::FromStr;
 
 #[derive(Debug, PartialEq)]
@@ -10,6 +15,19 @@ struct Instruction {
     operation: Ops,
     dst: Operand,
     src1: Operand,
+}
+
+impl fmt::Display for Instruction {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.operation)?;
+        if self.dst != Operand::Unused {
+            write!(f, " {}", self.dst)?;
+        }
+        if self.src1 != Operand::Unused {
+            write!(f, ", {}", self.src1)?;
+        }
+        write!(f, "")
+    }
 }
 
 impl FromStr for Instruction {
@@ -28,10 +46,12 @@ impl FromStr for Instruction {
         })
     }
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::registers::{r8, rax, rcx};
+
     #[test]
     fn test_instruction_from_str() {
         assert_eq!(
@@ -107,12 +127,36 @@ impl FromStr for Ops {
     }
 }
 
+impl fmt::Display for Ops {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Ops::Add => write!(f, "add"),
+            Ops::Sub => write!(f, "sub"),
+            Ops::Mul => write!(f, "mul"),
+            Ops::Xor => write!(f, "xor"),
+            Ops::And => write!(f, "and"),
+            Ops::Mov => write!(f, "mov"),
+        }
+    }
+}
+
 #[derive(Debug, PartialEq)]
 enum Operand {
     Unused,
     Reg(Register),
     Imm(i32),
     Mem(MemOperand),
+}
+
+impl fmt::Display for Operand {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Operand::Unused => write!(f, ""),
+            Operand::Reg(x) => write!(f, "{}", x),
+            Operand::Imm(x) => write!(f, "{}", x),
+            Operand::Mem(x) => write!(f, "{}", x),
+        }
+    }
 }
 
 impl FromStr for Operand {
@@ -133,9 +177,29 @@ impl FromStr for Operand {
 }
 
 fn main() {
-    println!(
-        "Register struct size: '{}'",
-        std::mem::size_of::<Register>()
-    );
-    println!("Hello, world!");
+    let args: Vec<String> = env::args().collect();
+    if args.len() != 2 {
+        println!("Usage: assembler <input_file>");
+        return;
+    }
+
+    let filename = &args[1];
+    let file = match File::open(filename) {
+        Ok(file) => file,
+        Err(err) => {
+            println!("Failed to open file {} with error {}", filename, err);
+            return;
+        }
+    };
+
+    let instrs: Vec<Result<Instruction, String>> = BufReader::new(file)
+        .lines()
+        .map(|line| line.unwrap().trim().parse::<Instruction>())
+        .collect();
+    for instr in instrs {
+        match instr {
+            Ok(t) => println!("{}", t),
+            Err(e) => println!("error: {}", e),
+        }
+    }
 }

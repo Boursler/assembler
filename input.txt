@@ -1,3 +1,5 @@
 add rax,rsi
+
 xor rdx,[rcx + rdx + 16]
 mov rsp,8
+and

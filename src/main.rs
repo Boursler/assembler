@@ -1,5 +1,5 @@
+mod lexer;
 mod mem_op;
-mod parser;
 mod registers;
 
 use mem_op::MemOperand;

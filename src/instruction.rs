@@ -5,9 +5,9 @@ use std::str::FromStr;
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Instruction {
-    operation: Ops,
-    dst: Operand,
-    src1: Operand,
+    pub operation: Ops,
+    pub dst: Operand,
+    pub src1: Operand,
 }
 
 impl fmt::Display for Instruction {
@@ -40,8 +40,8 @@ impl FromStr for Instruction {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
-enum Ops {
+#[derive(Debug, PartialEq, Clone, Eq)]
+pub enum Ops {
     Add,
     Sub,
     Mul,
@@ -79,7 +79,7 @@ impl fmt::Display for Ops {
 }
 
 #[derive(Debug, PartialEq, Clone)]
-enum Operand {
+pub enum Operand {
     Unused,
     Reg(Register),
     Imm(i32),

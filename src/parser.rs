@@ -1,5 +1,6 @@
-use crate::instruction::Instruction;
+use crate::instruction::{Instruction, Operand, Ops};
 use crate::lexer::{BinaryOp, Keyword, Label, Lexer, Token};
+use crate::mem_op::MemOperand;
 use crate::registers::Register;
 
 enum Expr {
@@ -50,6 +51,8 @@ enum GrammarError {
     InvalidToken(String),
     InvalidStatement(String),
     InvalidInstruction(String),
+    InvalidOperand(String),
+    InvalidMemExpr(String),
 }
 
 type ParseResult<T, L> = Result<(T, L), GrammarError>;
@@ -72,8 +75,8 @@ fn parse_helper<L>(p: Program, lex: L) -> ParseResult<Program, L>
 where
     L: Lexer,
 {
-    let (next, lex) = next(lex);
-    let token = match next {
+    let (n, lex) = next(lex);
+    let token = match n {
         Some(Ok(x)) => x,
         Some(Err(x)) => return Err(GrammarError::InvalidToken(x)),
         None => return Ok((p, lex)),
@@ -97,8 +100,8 @@ fn parse_function<L>(lex: L) -> ParseResult<Function, L>
 where
     L: Lexer,
 {
-    let (next, lex) = next(lex);
-    let label = match next {
+    let (n, lex) = next(lex);
+    let label = match n {
         Some(Ok(Token::Lab(x))) => x,
         Some(Ok(_)) => {
             return Err(GrammarError::InvalidFunction(format!(
@@ -150,8 +153,8 @@ fn parse_stmt<L>(lex: L) -> ParseResult<Statement, L>
 where
     L: Lexer,
 {
-    let (next, lex) = next(lex);
-    let token = match next {
+    let (n, lex) = next(lex);
+    let token = match n {
         Some(Ok(x)) => x,
         Some(Err(x)) => return Err(GrammarError::InvalidToken(x)),
         None => {
@@ -173,5 +176,81 @@ fn parse_instr<L>(lex: L) -> ParseResult<Instruction, L>
 where
     L: Lexer,
 {
-    Err(GrammarError::InvalidInstruction(format!("unimplimented")))
+    let (n, lex) = next(lex);
+    let token = match n {
+        Some(Ok(x)) => x,
+        Some(Err(x)) => return Err(GrammarError::InvalidToken(x)),
+        None => {
+            return Err(GrammarError::InvalidInstruction(format!(
+                "No instruction supplied"
+            )))
+        }
+    };
+    let instr = match token {
+        Token::InstrOp(x) => x,
+        _ => {
+            return Err(GrammarError::InvalidInstruction(format!(
+                "Instruction must begin with an op"
+            )))
+        }
+    };
+    let lex_copy = lex.clone();
+    let (op1, lex) = match parse_operand(lex) {
+        Ok(x) => x,
+        Err(_) => (Operand::Unused, lex_copy),
+    };
+    let (op2, lex) = if op1 == Operand::Unused {
+        (Operand::Unused, lex)
+    } else {
+        let lex_copy = lex.clone();
+        match parse_operand(lex) {
+            Ok(x) => x,
+            Err(_) => (Operand::Unused, lex_copy),
+        }
+    };
+    Ok((
+        Instruction {
+            operation: instr,
+            dst: op1,
+            src1: op2,
+        },
+        lex,
+    ))
+}
+
+fn parse_operand<L>(lex: L) -> ParseResult<Operand, L>
+where
+    L: Lexer,
+{
+    let (n, lex) = next(lex);
+    let token = match n {
+        Some(Ok(x)) => x,
+        Some(Err(x)) => return Err(GrammarError::InvalidToken(x)),
+        None => return Err(GrammarError::InvalidOperand(format!("No operand supplied"))),
+    };
+    match token {
+        Token::Reg(x) => Ok((Operand::Reg(x), lex)),
+        Token::Num(x) => Ok((Operand::Imm(x), lex)),
+        Token::BracketOpen => match parse_memexpr(lex) {
+            Ok((m, l)) => {
+                let (n, lex) = next(l);
+                match n {
+                    Some(Ok(Token::BracketClose)) => Ok((Operand::Mem(m), lex)),
+                    Some(Err(x)) => Err(GrammarError::InvalidToken(x)),
+                    _ => Err(GrammarError::InvalidOperand(format!(
+                        "No closing bracket for memory operand"
+                    ))),
+                }
+            }
+            Err(x) => Err(x),
+        },
+        _ => Err(GrammarError::InvalidOperand(format!("No valid operand"))),
+    }
+}
+
+fn parse_memexpr<L>(lex: L) -> ParseResult<MemOperand, L>
+where
+    L: Lexer,
+{
+    Err(GrammarError::InvalidMemExpr(format!("unimplemented")))
 }

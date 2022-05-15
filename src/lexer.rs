@@ -1,3 +1,4 @@
+use crate::instruction::*;
 use crate::registers::Register;
 use std::str::FromStr;
 
@@ -62,6 +63,7 @@ pub enum Token {
     Reg(Register),
     Key(Keyword),
     Lab(Label),
+    InstrOp(Ops),
 }
 
 pub trait Lexer: Iterator<Item = Result<Token, String>> + Clone {}
@@ -102,6 +104,8 @@ impl<'a> TryFrom<&'a str> for Token {
                     Num(x)
                 } else if let Ok(x) = t.parse::<Label>() {
                     Lab(x)
+                } else if let Ok(x) = t.parse::<Ops>() {
+                    InstrOp(x)
                 } else {
                     return Err(format!("lexing error invalid input: {}", t));
                 }

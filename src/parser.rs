@@ -24,6 +24,23 @@ struct Program {
     functions: Vec<Function>,
 }
 
+// Use rust move semantics to hide mutation generally enforced by datatypes.
+// Because data is moved, orignating structure cannot use the mutated data.
+fn concat<T>(mut v: Vec<T>, mut t: Vec<T>) -> Vec<T> {
+    v.append(&mut t);
+    v
+}
+fn append<T>(mut v: Vec<T>, mut t: T) -> Vec<T> {
+    concat(v, vec![t])
+}
+
+fn next<T>(mut lex: T) -> (Option<Result<Token, String>>, T)
+where
+    T: Lexer,
+{
+    (lex.next(), lex)
+}
+
 //recvd entire program call parse on every token in program
 //building pt
 fn parse<T>(lex: T) -> Result<Program, String>
@@ -38,11 +55,12 @@ where
         Err(x) => Err(x),
     }
 }
-fn parse_helper<T>(p: Program, mut lex: T) -> Result<(Program, T), String>
+fn parse_helper<T>(p: Program, lex: T) -> Result<(Program, T), String>
 where
     T: Lexer,
 {
-    let token = match lex.next() {
+    let (next, lex) = next(lex);
+    let token = match next {
         Some(Ok(x)) => x,
         Some(Err(x)) => return Err(x),
         None => return Ok((p, lex)),
@@ -51,7 +69,7 @@ where
         Token::Key(Keyword::Fn) => match parse_function(lex) {
             Ok((f, l)) => (
                 Program {
-                    functions: [p.functions, vec![f]].concat(),
+                    functions: append(p.functions, f),
                 },
                 l,
             ),
@@ -62,11 +80,12 @@ where
     parse_helper(new_p, new_lex)
 }
 
-fn parse_function<T>(mut lex: T) -> Result<(Function, T), String>
+fn parse_function<T>(lex: T) -> Result<(Function, T), String>
 where
     T: Lexer,
 {
-    let label = match lex.next() {
+    let (next, lex) = next(lex);
+    let label = match next {
         Some(Ok(Token::Lab(x))) => x,
         Some(Ok(_)) => return Err(format!("Label name must follow keyword fn")),
         Some(Err(x)) => return Err(x),
@@ -81,7 +100,7 @@ where
     )
 }
 
-fn parse_function_stmts<T>(f: Function, mut lex: T) -> Result<(Function, T), String>
+fn parse_function_stmts<T>(f: Function, lex: T) -> Result<(Function, T), String>
 where
     T: Lexer,
 {

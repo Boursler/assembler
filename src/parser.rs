@@ -41,11 +41,24 @@ where
     (lex.next(), lex)
 }
 
+// Parse result must return: A Language construct or Error, Lexer_state (rewound if error was encountered), and optionally accumulated error messages to print
+
+enum GrammarError {
+    // Errors have the form ErrorType(msg)
+    InvalidProgram(String),
+    InvalidFunction(String),
+    InvalidToken(String),
+    InvalidStatement(String),
+    InvalidInstruction(String),
+}
+
+type ParseResult<T, L> = Result<(T, L), GrammarError>;
+
 //recvd entire program call parse on every token in program
 //building pt
-fn parse<T>(lex: T) -> Result<Program, String>
+fn parse<L>(lex: L) -> Result<Program, GrammarError>
 where
-    T: Lexer,
+    L: Lexer,
 {
     let p = Program {
         functions: Vec::new(),
@@ -55,14 +68,14 @@ where
         Err(x) => Err(x),
     }
 }
-fn parse_helper<T>(p: Program, lex: T) -> Result<(Program, T), String>
+fn parse_helper<L>(p: Program, lex: L) -> ParseResult<Program, L>
 where
-    T: Lexer,
+    L: Lexer,
 {
     let (next, lex) = next(lex);
     let token = match next {
         Some(Ok(x)) => x,
-        Some(Err(x)) => return Err(x),
+        Some(Err(x)) => return Err(GrammarError::InvalidToken(x)),
         None => return Ok((p, lex)),
     };
     let (new_p, new_lex) = match token {
@@ -73,23 +86,31 @@ where
                 },
                 l,
             ),
-            Err(x) => return Err(x),
+            Err(e) => return Err(e),
         },
-        _ => return Err(format!("Invalid Program")),
+        _ => return Err(GrammarError::InvalidProgram(format!("Invalid Program"))),
     };
     parse_helper(new_p, new_lex)
 }
 
-fn parse_function<T>(lex: T) -> Result<(Function, T), String>
+fn parse_function<L>(lex: L) -> ParseResult<Function, L>
 where
-    T: Lexer,
+    L: Lexer,
 {
     let (next, lex) = next(lex);
     let label = match next {
         Some(Ok(Token::Lab(x))) => x,
-        Some(Ok(_)) => return Err(format!("Label name must follow keyword fn")),
-        Some(Err(x)) => return Err(x),
-        None => return Err(format!("Label name must follow keyword fn")),
+        Some(Ok(_)) => {
+            return Err(GrammarError::InvalidFunction(format!(
+                "Label name must follow keyword fn"
+            )))
+        }
+        Some(Err(x)) => return Err(GrammarError::InvalidToken(x)),
+        None => {
+            return Err(GrammarError::InvalidFunction(format!(
+                "Label name must follow keyword fn"
+            )))
+        }
     };
     parse_function_stmts(
         Function {
@@ -100,42 +121,44 @@ where
     )
 }
 
-fn parse_function_stmts<T>(f: Function, lex: T) -> Result<(Function, T), String>
+fn parse_function_stmts<L>(f: Function, lex: L) -> ParseResult<Function, L>
 where
-    T: Lexer,
+    L: Lexer,
 {
-    let (next, lex) = next(lex);
-    let token = match next {
-        Some(Ok(x)) => x,
-        Some(Err(x)) => return Err(x),
-        None => return Ok((f, lex)),
-    };
-    let (new_f, new_lex) = match token {
-        Token::Key(Keyword::Fn) => match parse_stmt(lex) {
-            Ok((s, l)) => (
-                Function {
-                    label: f.label,
-                    stmts: append(f.stmts, s),
-                },
-                l,
-            ),
-            Err(x) => return Err(x),
-        },
-        _ => return Err(format!("Invalid Program")),
+    let lex_copy = lex.clone();
+    let (f, lex) = match parse_stmt(lex) {
+        Ok((s, l)) => (
+            Function {
+                label: f.label,
+                stmts: append(f.stmts, s),
+            },
+            l,
+        ),
+        Err(x) => {
+            if f.stmts.len() != 0 {
+                return Ok((f, lex_copy));
+            } else {
+                return Err(x);
+            }
+        }
     };
 
-    parse_function_stmts(new_f, new_lex)
+    parse_function_stmts(f, lex)
 }
 
-fn parse_stmt<T>(lex: T) -> Result<(Statement, T), String>
+fn parse_stmt<L>(lex: L) -> ParseResult<Statement, L>
 where
-    T: Lexer,
+    L: Lexer,
 {
     let (next, lex) = next(lex);
     let token = match next {
         Some(Ok(x)) => x,
-        Some(Err(x)) => return Err(x),
-        None => return Err(format! {"No statement"}),
+        Some(Err(x)) => return Err(GrammarError::InvalidToken(x)),
+        None => {
+            return Err(GrammarError::InvalidStatement(format!(
+                "No token supplied for statement"
+            )))
+        }
     };
     match token {
         Token::Lab(x) => Ok((Statement::L(x), lex)),
@@ -146,9 +169,9 @@ where
     }
 }
 
-fn parse_instr<T>(lex: T) -> Result<(Instruction, T), String>
+fn parse_instr<L>(lex: L) -> ParseResult<Instruction, L>
 where
-    T: Lexer,
+    L: Lexer,
 {
-    Err(format!("unimplimented"))
+    Err(GrammarError::InvalidInstruction(format!("unimplimented")))
 }

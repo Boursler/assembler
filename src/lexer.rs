@@ -64,7 +64,7 @@ pub enum Token {
     Lab(Label),
 }
 
-pub trait Lexer: Iterator<Item = Result<Token, String>> {}
+pub trait Lexer: Iterator<Item = Result<Token, String>> + Clone {}
 
 pub trait IntoLexer<T>
 where
@@ -73,6 +73,7 @@ where
     fn into_lexer(self) -> T;
 }
 
+#[derive(Clone, Copy)]
 pub struct StrLexer<'a> {
     s: &'a str,
 }

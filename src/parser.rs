@@ -104,5 +104,32 @@ fn parse_function_stmts<T>(f: Function, lex: T) -> Result<(Function, T), String>
 where
     T: Lexer,
 {
-    Ok((f, lex))
+    let (next, lex) = next(lex);
+    let token = match next {
+        Some(Ok(x)) => x,
+        Some(Err(x)) => return Err(x),
+        None => return Ok((f, lex)),
+    };
+    let (new_f, new_lex) = match token {
+        Token::Key(Keyword::Fn) => match parse_stmt(lex) {
+            Ok((s, l)) => (
+                Function {
+                    label: f.label,
+                    stmts: append(f.stmts, s),
+                },
+                l,
+            ),
+            Err(x) => return Err(x),
+        },
+        _ => return Err(format!("Invalid Program")),
+    };
+
+    parse_function_stmts(new_f, new_lex)
+}
+
+fn parse_stmt<T>(lex: T) -> Result<(Statement, T), String>
+where
+    T: Lexer,
+{
+    Err(format! {"unimplimented"})
 }

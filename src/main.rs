@@ -4,6 +4,7 @@ mod mem_op;
 mod parser;
 mod registers;
 
+use instruction::Instruction;
 use mem_op::MemOperand;
 use registers::Register;
 use std::env;

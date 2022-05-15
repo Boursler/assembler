@@ -14,7 +14,7 @@ pub enum Keyword {
     Fn,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Label {
     name: String,
 }

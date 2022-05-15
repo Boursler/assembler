@@ -3,7 +3,7 @@ use std::fmt;
 use std::str::FromStr;
 
 //[source + scale * index + base]
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone)]
 pub struct MemOperand {
     pub source: Option<Register>,
     pub index: Option<Register>,

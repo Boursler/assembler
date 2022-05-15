@@ -3,7 +3,7 @@ use crate::registers::Register;
 use std::fmt;
 use std::str::FromStr;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Instruction {
     operation: Ops,
     dst: Operand,
@@ -40,7 +40,7 @@ impl FromStr for Instruction {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 enum Ops {
     Add,
     Sub,
@@ -78,7 +78,7 @@ impl fmt::Display for Ops {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 enum Operand {
     Unused,
     Reg(Register),

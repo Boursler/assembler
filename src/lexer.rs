@@ -1,10 +1,5 @@
 use crate::registers::Register;
-
-enum Expr {
-    Num(i32),
-    Reg(Register),
-    Op(BinaryOp, Box<Expr>, Box<Expr>),
-}
+use std::str::FromStr;
 
 #[derive(Debug, PartialEq, Eq)]
 enum BinaryOp {
@@ -15,6 +10,48 @@ enum BinaryOp {
 }
 
 #[derive(Debug, PartialEq, Eq)]
+enum Keyword {
+    Fn,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct Label {
+    name: String,
+}
+
+impl FromStr for Label {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, String> {
+        let len = s.chars().count();
+        if len < 2 {
+            return Err(format!("Empty string is not a label"));
+        }
+        let s = match s.strip_suffix(":") {
+            Some(x) => x,
+            None => return Err(format!("Labels must end in a :")),
+        };
+
+        for (idx, c) in s.chars().enumerate() {
+            if idx == 0 {
+                if !c.is_alphabetic() && !(c == '_') {
+                    return Err(format!("Labels must start with alphabetic character or _"));
+                }
+            } else {
+                if !c.is_alphanumeric() && !(c == '_') {
+                    return Err(format!(
+                        "Labels must contain only alphanumeric or _ characters"
+                    ));
+                }
+            }
+        }
+
+        Ok(Label {
+            name: s.to_string(),
+        })
+    }
+}
+#[derive(Debug, PartialEq, Eq)]
 enum Token {
     Num(i32),
     Op(BinaryOp),
@@ -23,6 +60,8 @@ enum Token {
     BracketOpen,
     BracketClose,
     Reg(Register),
+    Key(Keyword),
+    Lab(Label),
 }
 
 trait Lexer: Iterator<Item = Result<Token, String>> {}
@@ -43,6 +82,7 @@ impl<'a> TryFrom<&'a str> for Token {
     fn try_from(s: &'a str) -> Result<Self, Self::Error> {
         //Some(s)
         use BinaryOp::*;
+        use Keyword::*;
         use Token::*;
         Ok(match s {
             "+" => Op(Add),
@@ -53,11 +93,14 @@ impl<'a> TryFrom<&'a str> for Token {
             ")" => ParenClose,
             "[" => BracketOpen,
             "]" => BracketClose,
+            "fn" => Key(Fn),
             t => {
                 if let Ok(x) = t.parse::<Register>() {
                     Reg(x)
                 } else if let Ok(x) = t.parse::<i32>() {
                     Num(x)
+                } else if let Ok(x) = t.parse::<Label>() {
+                    Lab(x)
                 } else {
                     return Err(format!("lexing error invalid input: {}", t));
                 }
@@ -112,8 +155,17 @@ mod tests {
 
     #[test]
     fn test_lexer() {
-        let s = "rax + 23*2\n";
-        let res: Vec<Token> = vec![Reg(rax), Op(Add), Num(23), Op(Mul), Num(2)];
+        let s = "test: rax + 23*2\n";
+        let res: Vec<Token> = vec![
+            Lab(Label {
+                name: "test".to_string(),
+            }),
+            Reg(rax),
+            Op(Add),
+            Num(23),
+            Op(Mul),
+            Num(2),
+        ];
 
         let tokens: Vec<Token> = s.into_lexer().map(|x| x.unwrap()).collect();
         assert_eq!(tokens, res);

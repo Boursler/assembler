@@ -2,7 +2,7 @@ use crate::registers::Register;
 use std::str::FromStr;
 
 #[derive(Debug, PartialEq, Eq)]
-enum BinaryOp {
+pub enum BinaryOp {
     Add,
     Sub,
     Mul,
@@ -10,12 +10,12 @@ enum BinaryOp {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-enum Keyword {
+pub enum Keyword {
     Fn,
 }
 
 #[derive(Debug, PartialEq, Eq)]
-struct Label {
+pub struct Label {
     name: String,
 }
 
@@ -52,7 +52,7 @@ impl FromStr for Label {
     }
 }
 #[derive(Debug, PartialEq, Eq)]
-enum Token {
+pub enum Token {
     Num(i32),
     Op(BinaryOp),
     ParenOpen,
@@ -64,16 +64,16 @@ enum Token {
     Lab(Label),
 }
 
-trait Lexer: Iterator<Item = Result<Token, String>> {}
+pub trait Lexer: Iterator<Item = Result<Token, String>> {}
 
-trait IntoLexer<T>
+pub trait IntoLexer<T>
 where
     T: Lexer,
 {
     fn into_lexer(self) -> T;
 }
 
-struct StrLexer<'a> {
+pub struct StrLexer<'a> {
     s: &'a str,
 }
 

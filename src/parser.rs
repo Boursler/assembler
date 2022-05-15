@@ -131,5 +131,24 @@ fn parse_stmt<T>(lex: T) -> Result<(Statement, T), String>
 where
     T: Lexer,
 {
-    Err(format! {"unimplimented"})
+    let (next, lex) = next(lex);
+    let token = match next {
+        Some(Ok(x)) => x,
+        Some(Err(x)) => return Err(x),
+        None => return Err(format! {"No statement"}),
+    };
+    match token {
+        Token::Lab(x) => Ok((Statement::L(x), lex)),
+        _ => match parse_instr(lex) {
+            Ok((x, l)) => Ok((Statement::I(x), l)),
+            Err(x) => Err(x),
+        },
+    }
+}
+
+fn parse_instr<T>(lex: T) -> Result<(Instruction, T), String>
+where
+    T: Lexer,
+{
+    Err(format!("unimplimented"))
 }

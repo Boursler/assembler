@@ -1,13 +1,7 @@
 use crate::instruction::{Instruction, Operand, Ops};
 use crate::lexer::{BinaryOp, Keyword, Label, Lexer, Token};
-use crate::mem_op::MemOperand;
+use crate::mem_op::{Expr, MemOperand};
 use crate::registers::Register;
-
-enum Expr {
-    Num(i32),
-    Reg(Register),
-    Op(BinaryOp, Box<Expr>, Box<Expr>),
-}
 
 #[derive(Debug, Clone)]
 enum Statement {
@@ -53,6 +47,7 @@ enum GrammarError {
     InvalidInstruction(String),
     InvalidOperand(String),
     InvalidMemExpr(String),
+    None,
 }
 
 type ParseResult<T, L> = Result<(T, L), GrammarError>;
@@ -252,5 +247,95 @@ fn parse_memexpr<L>(lex: L) -> ParseResult<MemOperand, L>
 where
     L: Lexer,
 {
-    Err(GrammarError::InvalidMemExpr(format!("unimplemented")))
+    match parseExpr(lex) {
+        //will need a MemOperand from Expr
+        Ok((x, l)) => Ok((MemOperand::try_from(x).unwrap(), l)),
+        Err(x) => Err(x),
+    }
 }
+
+struct ExprOp {
+    expr: Expr,
+    op: Option<BinaryOp>,
+}
+
+fn parseExpr<L>(lex: L) -> ParseResult<Expr, L>
+where
+    L: Lexer,
+{
+    //    let block = parse_to_block(Vec::new(), lex);
+    // let block = parse_muldiv(block);
+    // //verify block is of correct form
+    // let expr = parse_addsub(block)
+    Err(GrammarError::None)
+}
+
+fn get_next_token<L>(lex: L, none_err: GrammarError) -> ParseResult<Token, L>
+where
+    L: Lexer,
+{
+    let (n, lex) = next(lex);
+    match n {
+        Some(Ok(x)) => Ok((x, lex)),
+        Some(Err(x)) => Err(GrammarError::InvalidToken(x)),
+        None => Err(none_err),
+    }
+}
+
+fn try_get_next_token<L>(lex: L) -> ParseResult<Option<Token>, L>
+where
+    L: Lexer,
+{
+    let (n, lex) = next(lex);
+    match n {
+        Some(Ok(x)) => Ok((Some(x), lex)),
+        Some(Err(x)) => Err(GrammarError::InvalidToken(x)),
+        None => Ok((None, lex)),
+    }
+}
+
+fn parse_to_block<L>(cur: Vec<ExprOp>, lex: L) -> ParseResult<Vec<ExprOp>, L>
+where
+    L: Lexer,
+{
+    let (token, lex) = get_next_token(
+        lex,
+        GrammarError::InvalidMemExpr(format!("Unmatched opr and expr")),
+    )?;
+
+    let (expr, lex) = match token {
+        Token::Num(x) => (Expr::Num(x), lex),
+        Token::Reg(x) => (Expr::Reg(x), lex),
+        Token::ParenOpen => {
+            let (expr, lex) = parseExpr(lex)?;
+            if let Ok((Token::ParenClose, lex)) = get_next_token(lex, GrammarError::None) {
+                (expr, lex)
+            } else {
+                return Err(GrammarError::InvalidMemExpr(format!(
+                    "Missing Closing Parenthesis"
+                )));
+            }
+        }
+        _ => return Err(GrammarError::InvalidMemExpr(format!("unimplemented"))),
+    };
+
+    let (op, lex, f) = match try_get_next_token(lex.clone())? {
+        (Some(Token::Op(x)), l) => (Some(x), l, false),
+        _ => (None, lex, true),
+    };
+
+    let v = append(cur, ExprOp { expr, op });
+    if f {
+        Ok((v, lex))
+    } else {
+        parse_to_block(v, lex)
+    }
+}
+
+// parse_block(Seq<ExprOp>){
+
+// }
+
+// parse_muldiv(Seq<ExprOp>) {
+
+// }

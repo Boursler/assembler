@@ -1,3 +1,4 @@
+use crate::lexer::BinaryOp;
 use crate::registers::Register;
 use std::fmt;
 use std::str::FromStr;
@@ -9,6 +10,12 @@ pub struct MemOperand {
     pub index: Option<Register>,
     pub scale: u8,
     pub displacement: i32,
+}
+
+pub enum Expr {
+    Num(i32),
+    Reg(Register),
+    Op(BinaryOp, Box<Expr>, Box<Expr>),
 }
 
 impl fmt::Display for MemOperand {
@@ -36,6 +43,17 @@ impl fmt::Display for MemOperand {
     }
 }
 
+impl TryFrom<Expr> for MemOperand {
+    type Error = String;
+    fn try_from(value: Expr) -> Result<Self, Self::Error> {
+        Ok(MemOperand {
+            source: None,
+            index: None,
+            scale: 0,
+            displacement: 0,
+        })
+    }
+}
 impl FromStr for MemOperand {
     type Err = String;
     fn from_str(s: &str) -> Result<Self, String> {

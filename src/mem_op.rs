@@ -78,19 +78,23 @@ impl Expr {
     }
 }
 
-impl ToString for Expr {
-    fn to_string(&self) -> String {
-        match &self {
-            Expr::Num(x) => x.to_string(),
-            Expr::Reg(x) => x.to_string(),
-            Expr::Op(op, left, right) => format!(
-                "({} {} {})",
-                (*left).to_string(),
-                op.to_string(),
-                (*right).to_string()
-            ),
-            Expr::UnaryOp(op, expr) => format!("{}{}", op.to_string(), (*expr).to_string()),
-        }
+impl fmt::Display for Expr {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            match &self {
+                Expr::Num(x) => x.to_string(),
+                Expr::Reg(x) => x.to_string(),
+                Expr::Op(op, left, right) => format!(
+                    "({} {} {})",
+                    (*left).to_string(),
+                    op.to_string(),
+                    (*right).to_string()
+                ),
+                Expr::UnaryOp(op, expr) => format!("{}{}", op.to_string(), (*expr).to_string()),
+            }
+        )
     }
 }
 

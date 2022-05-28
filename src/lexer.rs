@@ -1,13 +1,39 @@
 use crate::instruction::*;
 use crate::registers::Register;
+use std::fmt;
 use std::str::FromStr;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum BinaryOp {
     Add,
     Sub,
     Mul,
     Div,
+}
+impl BinaryOp {
+    pub fn evaluate(&self, left: i32, right: i32) -> i32 {
+        use BinaryOp::*;
+        match *self {
+            Add => left + right,
+            Sub => left - right,
+            Mul => left * right,
+            Div => left / right,
+        }
+    }
+}
+impl fmt::Display for BinaryOp {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            match &self {
+                BinaryOp::Add => "+".to_string(),
+                BinaryOp::Sub => "-".to_string(),
+                BinaryOp::Mul => "*".to_string(),
+                BinaryOp::Div => "/".to_string(),
+            }
+        )
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]

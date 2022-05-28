@@ -1,5 +1,5 @@
 use crate::instruction::{Instruction, Operand, Ops};
-use crate::lexer::{BinaryOp, Keyword, Label, Lexer, Token};
+use crate::lexer::{BinaryOp, IntoLexer, Keyword, Label, Lexer, Token};
 use crate::mem_op::{Expr, MemOperand};
 use crate::registers::Register;
 
@@ -28,6 +28,9 @@ fn concat<T>(mut v: Vec<T>, mut t: Vec<T>) -> Vec<T> {
 fn append<T>(mut v: Vec<T>, mut t: T) -> Vec<T> {
     concat(v, vec![t])
 }
+fn pop<T>(mut v: Vec<T>) -> (Option<T>, Vec<T>) {
+    (v.pop(), v)
+}
 
 fn next<T>(mut lex: T) -> (Option<Result<Token, String>>, T)
 where
@@ -37,8 +40,8 @@ where
 }
 
 // Parse result must return: A Language construct or Error, Lexer_state (rewound if error was encountered), and optionally accumulated error messages to print
-
-enum GrammarError {
+#[derive(Debug)]
+pub enum GrammarError {
     // Errors have the form ErrorType(msg)
     InvalidProgram(String),
     InvalidFunction(String),
@@ -47,6 +50,7 @@ enum GrammarError {
     InvalidInstruction(String),
     InvalidOperand(String),
     InvalidMemExpr(String),
+    Custom(String),
     None,
 }
 
@@ -213,7 +217,7 @@ where
     ))
 }
 
-fn parse_operand<L>(lex: L) -> ParseResult<Operand, L>
+pub fn parse_operand<L>(lex: L) -> ParseResult<Operand, L>
 where
     L: Lexer,
 {
@@ -247,10 +251,10 @@ fn parse_memexpr<L>(lex: L) -> ParseResult<MemOperand, L>
 where
     L: Lexer,
 {
-    match parseExpr(lex) {
-        //will need a MemOperand from Expr
-        Ok((x, l)) => Ok((MemOperand::try_from(x).unwrap(), l)),
-        Err(x) => Err(x),
+    let (x, l) = parseExpr(lex)?;
+    match MemOperand::try_from(x) {
+        Ok(x) => Ok((x, l)),
+        Err(e) => Err(GrammarError::InvalidMemExpr(e)),
     }
 }
 
@@ -263,11 +267,14 @@ fn parseExpr<L>(lex: L) -> ParseResult<Expr, L>
 where
     L: Lexer,
 {
-    //    let block = parse_to_block(Vec::new(), lex);
-    // let block = parse_muldiv(block);
-    // //verify block is of correct form
-    // let expr = parse_addsub(block)
-    Err(GrammarError::None)
+    let (block, lex) = parse_to_block(Vec::new(), lex)?;
+    let block = parse_op_category(block, &vec![BinaryOp::Mul, BinaryOp::Div]);
+    let block = parse_op_category(block, &vec![BinaryOp::Add, BinaryOp::Sub]);
+    let (result, block) = pop(block);
+    if block.len() != 0 {
+        panic!("parse op category should result in a single expression");
+    }
+    Ok((result.unwrap().expr, lex))
 }
 
 fn get_next_token<L>(lex: L, none_err: GrammarError) -> ParseResult<Token, L>
@@ -298,27 +305,7 @@ fn parse_to_block<L>(cur: Vec<ExprOp>, lex: L) -> ParseResult<Vec<ExprOp>, L>
 where
     L: Lexer,
 {
-    let (token, lex) = get_next_token(
-        lex,
-        GrammarError::InvalidMemExpr(format!("Unmatched opr and expr")),
-    )?;
-
-    let (expr, lex) = match token {
-        Token::Num(x) => (Expr::Num(x), lex),
-        Token::Reg(x) => (Expr::Reg(x), lex),
-        Token::ParenOpen => {
-            let (expr, lex) = parseExpr(lex)?;
-            if let Ok((Token::ParenClose, lex)) = get_next_token(lex, GrammarError::None) {
-                (expr, lex)
-            } else {
-                return Err(GrammarError::InvalidMemExpr(format!(
-                    "Missing Closing Parenthesis"
-                )));
-            }
-        }
-        _ => return Err(GrammarError::InvalidMemExpr(format!("unimplemented"))),
-    };
-
+    let (expr, lex) = parse_single_expr(lex)?;
     let (op, lex, f) = match try_get_next_token(lex.clone())? {
         (Some(Token::Op(x)), l) => (Some(x), l, false),
         _ => (None, lex, true),
@@ -332,10 +319,110 @@ where
     }
 }
 
+fn parse_single_expr<L>(lex: L) -> ParseResult<Expr, L>
+where
+    L: Lexer,
+{
+    let (token, lex) = get_next_token(
+        lex,
+        GrammarError::InvalidMemExpr(format!("Unmatched opr and expr")),
+    )?;
+
+    match token {
+        Token::Num(x) => Ok((Expr::Num(x), lex)),
+        Token::Reg(x) => Ok((Expr::Reg(x), lex)),
+        Token::Op(BinaryOp::Add) => parse_single_expr(lex),
+        Token::Op(BinaryOp::Sub) => {
+            let (expr, lex) = parse_single_expr(lex)?;
+            Ok((Expr::UnaryOp(BinaryOp::Sub, Box::new(expr)), lex))
+        }
+        Token::ParenOpen => {
+            let (expr, lex) = parseExpr(lex)?;
+            if let Ok((Token::ParenClose, lex)) = get_next_token(lex, GrammarError::None) {
+                Ok((expr, lex))
+            } else {
+                return Err(GrammarError::InvalidMemExpr(format!(
+                    "Missing Closing Parenthesis"
+                )));
+            }
+        }
+        _ => return Err(GrammarError::InvalidMemExpr(format!("unimplemented"))),
+    }
+}
 // parse_block(Seq<ExprOp>){
 
 // }
 
-// parse_muldiv(Seq<ExprOp>) {
+fn parse_op_category(seq: Vec<ExprOp>, category: &Vec<BinaryOp>) -> Vec<ExprOp> {
+    if (seq.len() <= 1) {
+        return seq;
+    }
 
-// }
+    let (last, seq) = match pop(seq) {
+        (Some(t), s) => (t, s),
+        (None, s) => unreachable!(),
+    };
+
+    let seq = parse_op_category(seq, category);
+
+    let (penultimate, seq) = match pop(seq) {
+        (Some(t), s) => (t, s),
+        (None, s) => unreachable!(),
+    };
+
+    let needs_combined = penultimate
+        .op
+        .map_or_else(|| false, |op| category.contains(&op));
+
+    if needs_combined {
+        let op = penultimate.op.unwrap();
+        append(
+            seq,
+            ExprOp {
+                expr: Expr::Op(op, Box::new(penultimate.expr), Box::new(last.expr)),
+                op: last.op,
+            },
+        )
+    } else {
+        append(append(seq, penultimate), last)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_correct_expr(s: &(&str, &str)) {
+        let input = s.0;
+        let output = s.1;
+        let (result, lex) = match parseExpr(input.into_lexer()) {
+            Ok(x) => x,
+            Err(x) => panic!(
+                "Failed to parse {}, parsing failed with error {:?}.",
+                input, x
+            ),
+        };
+
+        let remaining_tokens: Vec<Token> = lex.map(|x| x.unwrap()).collect();
+        assert_eq!(remaining_tokens[0], Token::BracketClose);
+        assert_eq!(result.to_string(), output);
+    }
+
+    #[test]
+    fn test_parse_expr() {
+        let correct_tests: Vec<(&str, &str)> = vec![
+            ("1 + rax]", "(1 + rax)"),
+            ("1 + -1]", "(1 + -1)"),
+            ("-1 + rax]", "(-1 + rax)"),
+            ("1 + 2 * 3]", "(1 + (2 * 3))"),
+            ("2 * 3 + 1]", "((2 * 3) + 1)"),
+            ("2 * -3 + 1]", "((2 * -3) + 1)"),
+            ("1 + -(2 * 3)]", "(1 + -(2 * 3))"),
+            ("-(2 * -3) + 1]", "(-(2 * -3) + 1)"),
+            ("rax * -3 + rax]", "((rax * -3) + rax)"),
+        ];
+        for test in &correct_tests {
+            test_correct_expr(test);
+        }
+    }
+}

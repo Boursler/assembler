@@ -1,3 +1,4 @@
+#![feature(box_patterns)]
 mod instruction;
 mod lexer;
 mod mem_op;

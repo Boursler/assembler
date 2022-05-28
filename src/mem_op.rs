@@ -1,4 +1,6 @@
-use crate::lexer::BinaryOp;
+use crate::instruction::Operand;
+use crate::lexer::{BinaryOp, IntoLexer};
+use crate::parser::{parse_operand, GrammarError};
 use crate::registers::Register;
 use std::fmt;
 use std::str::FromStr;
@@ -12,10 +14,84 @@ pub struct MemOperand {
     pub displacement: i32,
 }
 
+#[derive(Debug, Clone)]
 pub enum Expr {
     Num(i32),
     Reg(Register),
     Op(BinaryOp, Box<Expr>, Box<Expr>),
+    //todo: rename BinaryOp as it includes the set of Unaries
+    UnaryOp(BinaryOp, Box<Expr>),
+}
+
+//fix use of boxes
+impl Expr {
+    fn simplify(&self) -> Expr {
+        use BinaryOp::*;
+        use Expr::*;
+        match self {
+            Num(x) => Num(*x),
+            Reg(x) => Reg(*x),
+            Op(op, left, right) => match (*op, left.simplify(), right.simplify()) {
+                (op, Num(x), Num(y)) => Num(op.evaluate(x, y)),
+                (Add, Reg(x), Num(y)) => Op(Add, Num(y).boxed(), Reg(x).boxed()),
+                (Sub, x, Num(y)) => (Op(Add, Num(-y).boxed(), (x).boxed())).simplify(),
+                (Mul, Reg(x), Num(y)) => Op(Mul, Num(y).boxed(), Reg(x).boxed()),
+
+                //x op (l next_op r)
+                (Mul, Num(x), Op(Add, y, z)) => Op(
+                    Add,
+                    Op(Mul, Num(x).boxed(), y.boxed()).boxed(),
+                    Op(Mul, Num(x).boxed(), z.boxed()).boxed(),
+                )
+                .simplify(),
+                (Mul, Op(Add, x, y), Num(z)) => Op(
+                    Add,
+                    Op(Mul, x, Num(z).boxed()).boxed(),
+                    Op(Mul, y, Num(z).boxed()).boxed(),
+                )
+                .simplify(),
+
+                (Mul, Num(x), Op(Mul, box Num(y), z)) => Op(Mul, Num(x * y).boxed(), z),
+                (Mul, Op(Mul, box Num(x), y), Num(z)) => Op(Mul, Num(x * z).boxed(), y),
+
+                (Add, Num(x), Op(Add, box Num(y), z)) => Op(Add, Num(x + y).boxed(), z),
+                (Add, Op(Add, box Num(x), y), Num(z)) => Op(Add, Num(x + z).boxed(), y),
+
+                (Div, Op(Mul, box Num(x), y), Num(z)) => {
+                    if x % z == 0 {
+                        Op(Mul, Num(x / z).boxed(), y)
+                    } else {
+                        Op(Div, Op(Mul, Num(x).boxed(), y).boxed(), Num(z).boxed())
+                    }
+                }
+                (op, l, r) => Op(op, l.boxed(), r.boxed()),
+            },
+            UnaryOp(op, expr) => match (*op, expr.simplify()) {
+                (Add, x) => x,
+                (Sub, x) => Op(Mul, Num(-1).boxed(), x.boxed()).simplify(),
+                (op, e) => UnaryOp(op, e.boxed()),
+            },
+        }
+    }
+    fn boxed(self) -> Box<Expr> {
+        Box::new(self)
+    }
+}
+
+impl ToString for Expr {
+    fn to_string(&self) -> String {
+        match &self {
+            Expr::Num(x) => x.to_string(),
+            Expr::Reg(x) => x.to_string(),
+            Expr::Op(op, left, right) => format!(
+                "({} {} {})",
+                (*left).to_string(),
+                op.to_string(),
+                (*right).to_string()
+            ),
+            Expr::UnaryOp(op, expr) => format!("{}{}", op.to_string(), (*expr).to_string()),
+        }
+    }
 }
 
 impl fmt::Display for MemOperand {
@@ -36,7 +112,7 @@ impl fmt::Display for MemOperand {
             }
             None => sep,
         };
-        if self.displacement != 0 {
+        if self.displacement != 0 || (self.source.is_none() && self.index.is_none()) {
             write!(f, "{}{}", sep, self.displacement)?;
         }
         write!(f, "]")
@@ -46,129 +122,125 @@ impl fmt::Display for MemOperand {
 impl TryFrom<Expr> for MemOperand {
     type Error = String;
     fn try_from(value: Expr) -> Result<Self, Self::Error> {
-        Ok(MemOperand {
-            source: None,
-            index: None,
-            scale: 0,
-            displacement: 0,
-        })
+        //expr is binary tree, traverse iter
+        fn traverse(tree: Expr, curr: MemOperand) -> Result<MemOperand, String> {
+            use BinaryOp::*;
+            use Expr::*;
+            match tree {
+                Num(x) => {
+                    if curr.displacement == 0 {
+                        return Ok(MemOperand {
+                            source: curr.source,
+                            index: curr.index,
+                            scale: curr.scale,
+                            displacement: x,
+                        });
+                    } else {
+                        unreachable!("Simplify should prevent this");
+                    }
+                }
+                Reg(x) => {
+                    if curr.source.is_none() {
+                        return Ok(MemOperand {
+                            source: Some(x),
+                            index: curr.index,
+                            scale: curr.scale,
+                            displacement: curr.displacement,
+                        });
+                    } else if curr.index.is_none() {
+                        return Ok(MemOperand {
+                            source: curr.source,
+                            index: Some(x),
+                            scale: 1,
+                            displacement: curr.displacement,
+                        });
+                    } else {
+                        return Err(format!("Too many registers"));
+                    }
+                }
+                Op(Mul, box Num(x), box Reg(y)) => {
+                    if vec![1, 2, 4, 8].contains(&x) && curr.index.is_none() {
+                        return Ok(MemOperand {
+                            source: curr.source,
+                            index: Some(y),
+                            scale: x as u8,
+                            displacement: curr.displacement,
+                        });
+                        //power of 2 + 1
+                    } else if vec![3, 5, 9].contains(&x)
+                        && curr.source.is_none()
+                        && curr.index.is_none()
+                    {
+                        return Ok(MemOperand {
+                            source: Some(y),
+                            index: Some(y),
+                            scale: (x - 1) as u8,
+                            displacement: curr.displacement,
+                        });
+                    } else if curr.scale == 1 && curr.source.is_none() {
+                        return Ok(MemOperand {
+                            source: curr.index,
+                            index: Some(y),
+                            scale: x as u8,
+                            displacement: curr.displacement,
+                        });
+                    } else if x == 1 && curr.source.is_none() {
+                        return Ok(MemOperand {
+                            source: Some(y),
+                            index: curr.index,
+                            scale: curr.scale,
+                            displacement: curr.displacement,
+                        });
+                    } else {
+                        return Err(format!("Too many scaled registers"));
+                    }
+                }
+                Op(Add, x, y) => Ok(traverse(*y, traverse(*x, curr)?)?),
+                _ => Err(format!("Invalid MemOperand from Expr")),
+            }
+        }
+        println!("{}", value.simplify().to_string());
+        traverse(
+            value.simplify(),
+            MemOperand {
+                source: None,
+                index: None,
+                scale: 0,
+                displacement: 0,
+            },
+        )
     }
 }
+impl TryFrom<Operand> for MemOperand {
+    type Error = String;
+    fn try_from(s: Operand) -> Result<Self, Self::Error> {
+        if let Operand::Mem(x) = s {
+            return Ok(x);
+        } else {
+            return Err("Operand is not a Memory Operand".to_string());
+        }
+    }
+}
+
 impl FromStr for MemOperand {
     type Err = String;
     fn from_str(s: &str) -> Result<Self, String> {
-        #[derive(PartialEq)]
-        struct ParseState {
-            source: Option<Register>,
-            index: Option<Register>,
-            scale: Option<u8>,
-            displacement: Option<i32>,
-            empty: bool,
-        }
-        fn parse_helper(p: ParseState, s: &str) -> Result<ParseState, String> {
-            if p.empty {
-                return match s.strip_prefix("[").unwrap_or("").strip_suffix("]") {
-                    Some(st) => parse_helper(
-                        ParseState {
-                            source: p.source,
-                            index: p.index,
-                            scale: p.scale,
-                            displacement: p.displacement,
-                            empty: false,
-                        },
-                        st,
-                    ),
-                    _ => Err("poorly formatted memoperand".to_string()),
-                };
+        match parse_operand(s.into_lexer()) {
+            Ok((x, mut l)) => {
+                if l.next().is_none() {
+                    MemOperand::try_from(x)
+                } else {
+                    Err("Trailing Garbage".to_string())
+                }
             }
-
-            if s.is_empty() {
-                return if p.source.is_some() || p.index.is_some() || p.displacement.is_some() {
-                    Ok(p)
-                } else {
-                    Err("memoperand does not contain required fields".to_string())
-                };
+            Err(GrammarError::InvalidMemExpr(x)) => {
+                Err(format!("Invalid MemExpr {}", x.to_string()))
             }
-
-            let (next, rem) = match s.split_once('+') {
-                None => (s.trim(), ""),
-                Some((x, y)) => (x.trim(), y.trim()),
-            };
-
-            let p_next = if let Some((left, right)) = next.split_once('*') {
-                // parse scale * idx
-                if p.index.is_some() {
-                    return Err("Index register already set".to_string());
-                }
-
-                let left_value = left.trim().parse::<u8>().ok();
-                let right_value = right.trim().parse::<Register>().ok();
-                if right_value.is_some() && left_value.is_some() {
-                    ParseState {
-                        source: p.source,
-                        index: right_value,
-                        scale: left_value,
-                        displacement: p.displacement,
-                        empty: p.empty,
-                    }
-                } else {
-                    return Err(format!(
-                        "Invalid scale and idx expression idx:{}, scale: {}",
-                        right.trim(),
-                        left.trim()
-                    )
-                    .to_string());
-                }
-            } else if let Ok(x) = next.parse::<Register>() {
-                if p.source.is_none() {
-                    ParseState {
-                        source: Some(x),
-                        index: p.index,
-                        scale: p.scale,
-                        displacement: p.displacement,
-                        empty: p.empty,
-                    }
-                } else if p.index.is_none() {
-                    ParseState {
-                        source: p.source,
-                        index: Some(x),
-                        scale: Some(1),
-                        displacement: p.displacement,
-                        empty: p.empty,
-                    }
-                } else {
-                    return Err("Too many registers in memory operand".to_string());
-                }
-            } else if let Ok(x) = next.parse::<i32>() {
-                ParseState {
-                    source: p.source,
-                    index: p.index,
-                    scale: p.scale,
-                    displacement: Some(p.displacement.unwrap_or(0) + x),
-                    empty: p.empty,
-                }
-            } else {
-                return Err("Invalid register or numeral literal".to_string());
-            };
-
-            parse_helper(p_next, rem)
+            Err(GrammarError::InvalidOperand(x)) => {
+                Err(format!("Invalid Operand {}", x.to_string()))
+            }
+            _ => Err(format!("Failed")),
         }
-        let o = parse_helper(
-            ParseState {
-                source: None,
-                index: None,
-                scale: None,
-                displacement: None,
-                empty: true,
-            },
-            s,
-        )?;
-        Ok(MemOperand {
-            source: o.source,
-            index: o.index,
-            scale: o.scale.unwrap_or(0),
-            displacement: o.displacement.unwrap_or(0),
-        })
     }
 }
 
@@ -178,74 +250,26 @@ mod tests {
     use crate::registers::{r8, rax, rcx};
 
     #[test]
+    fn test_mem_operand_from_expr() {}
+    #[test]
     fn test_mem_operand_from_str() {
-        assert_eq!(
-            "[rax]".parse::<MemOperand>(),
-            Ok(MemOperand {
-                source: Some(rax),
-                index: None,
-                scale: 0,
-                displacement: 0,
-            })
-        );
-
-        assert_eq!(
-            "[rax + r8]".parse::<MemOperand>(),
-            Ok(MemOperand {
-                source: Some(rax),
-                index: Some(r8),
-                scale: 1,
-                displacement: 0,
-            })
-        );
-
-        assert_eq!(
-            "[rax + 2 * r8]".parse::<MemOperand>(),
-            Ok(MemOperand {
-                source: Some(rax),
-                index: Some(r8),
-                scale: 2,
-                displacement: 0,
-            })
-        );
-
-        assert_eq!(
-            "[1024]".parse::<MemOperand>(),
-            Ok(MemOperand {
-                source: None,
-                index: None,
-                scale: 0,
-                displacement: 1024,
-            })
-        );
-
-        assert_eq!(
-            "[4 * rcx]".parse::<MemOperand>(),
-            Ok(MemOperand {
-                source: None,
-                index: Some(rcx),
-                scale: 4,
-                displacement: 0,
-            })
-        );
-
-        assert_eq!(
-            "[rcx + 4 * rcx + 1023]".parse::<MemOperand>(),
-            Ok(MemOperand {
-                source: Some(rcx),
-                index: Some(rcx),
-                scale: 4,
-                displacement: 1023,
-            })
-        );
-        assert_eq!(
-            "[r8 + 2*rax + -30]".parse::<MemOperand>(),
-            Ok(MemOperand {
-                source: Some(r8),
-                index: Some(rax),
-                scale: 2,
-                displacement: -30,
-            })
-        );
+        let correct_tests: Vec<(&str, &str)> = vec![
+            ("[rax]", "[rax]"),
+            ("[1 - 1]", "[0]"),
+            ("[4 * (rax + -10) + rbx]", "[rbx + 4 * rax + -40]"),
+            (
+                "[rbx + 4 * ((1 + 1) / 2 * rax + -10)]",
+                "[rbx + 4 * rax + -40]",
+            ),
+            ("[2*(rax + -10) + 1 * rbx]", "[rbx + 2 * rax + -20]"),
+            ("[3 * rax]", "[rax + 2 * rax]"),
+        ];
+        for test in correct_tests {
+            let out = match MemOperand::from_str(test.0) {
+                Ok(t) => t.to_string(),
+                Err(e) => panic!("parsing {} resulted in error {:?}", test.0, e),
+            };
+            assert_eq!(out, test.1)
+        }
     }
 }

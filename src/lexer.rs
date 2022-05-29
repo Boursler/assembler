@@ -90,6 +90,7 @@ pub enum Token {
     Key(Keyword),
     Lab(Label),
     InstrOp(Ops),
+    Comma,
 }
 
 pub trait Lexer: Iterator<Item = Result<Token, String>> + Clone {}
@@ -123,6 +124,7 @@ impl<'a> TryFrom<&'a str> for Token {
             "[" => BracketOpen,
             "]" => BracketClose,
             "fn" => Key(Fn),
+            "," => Comma,
             t => {
                 if let Ok(x) = t.parse::<Register>() {
                     Reg(x)
@@ -153,7 +155,7 @@ impl<'a> Iterator for StrLexer<'a> {
         fn split(s: &str) -> (&str, &str) {
             let s = s.trim_start();
             let i = s
-                .find(|c: char| c.is_whitespace() || "()[]|^&*/+-%<>".contains(c))
+                .find(|c: char| c.is_whitespace() || "()[]|^&*/+-%<>,".contains(c))
                 .unwrap_or(s.len());
 
             if i == 0 {

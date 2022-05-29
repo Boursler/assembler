@@ -157,7 +157,7 @@ where
     }
 }
 
-fn parse_instr<L>(lex: L) -> ParseResult<Instruction, L>
+pub fn parse_instr<L>(lex: L) -> ParseResult<Instruction, L>
 where
     L: Lexer,
 {
@@ -188,9 +188,12 @@ where
         (Operand::Unused, lex)
     } else {
         let lex_copy = lex.clone();
-        match parse_operand(lex) {
-            Ok(x) => x,
-            Err(_) => (Operand::Unused, lex_copy),
+        match try_get_next_token(lex)? {
+            (Some(Token::Comma), l) => match parse_operand(l) {
+                Ok(x) => x,
+                Err(x) => return Err(x),
+            },
+            _ => (Operand::Unused, lex_copy),
         }
     };
     Ok((
@@ -216,6 +219,12 @@ where
     match token {
         Token::Reg(x) => Ok((Operand::Reg(x), lex)),
         Token::Num(x) => Ok((Operand::Imm(x), lex)),
+        Token::Op(BinaryOp::Sub) => match parse_operand(lex)? {
+            (Operand::Imm(x), l) => Ok((Operand::Imm(-x), l)),
+            _ => Err(ParseError::InvalidOperand(format!(
+                "Constant expr not yet implemented"
+            ))),
+        },
         Token::BracketOpen => match parse_memexpr(lex) {
             Ok((m, l)) => {
                 let (n, lex) = next(l);
@@ -337,7 +346,7 @@ where
 }
 
 fn parse_op_category(seq: Vec<ExprOp>, category: &Vec<BinaryOp>) -> Vec<ExprOp> {
-    if (seq.len() <= 1) {
+    if seq.len() <= 1 {
         return seq;
     }
 

@@ -1,7 +1,7 @@
 use crate::lexer::IntoLexer;
 use crate::mem_op::MemOperand;
 use crate::parse_error::ParseError;
-use crate::parser::parse_operand;
+use crate::parser::{parse_instr, parse_operand};
 use crate::registers::Register;
 use std::fmt;
 use std::str::FromStr;
@@ -29,17 +29,16 @@ impl fmt::Display for Instruction {
 impl FromStr for Instruction {
     type Err = ParseError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let (ins, rem) = match s.split_once(char::is_whitespace) {
-            None => (s, ""),
-            Some(x) => x,
-        };
-
-        let mut operands = rem.trim().split(',');
-        Ok(Instruction {
-            operation: ins.trim().parse::<Ops>()?,
-            dst: operands.next().unwrap_or("").trim().parse::<Operand>()?,
-            src1: operands.next().unwrap_or("").trim().parse::<Operand>()?,
-        })
+        match parse_instr(s.into_lexer()) {
+            Ok((x, mut l)) => {
+                if l.next().is_none() {
+                    Ok(x)
+                } else {
+                    Err(ParseError::UnusedTokens)
+                }
+            }
+            Err(x) => Err(x),
+        }
     }
 }
 

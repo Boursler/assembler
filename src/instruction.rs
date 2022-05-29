@@ -133,6 +133,7 @@ mod tests {
                 "xor [r8 + 2*rax - 30], rcx",
                 "xor [r8 + 2 * rax + -30], rcx",
             ),
+            ("add rsi, -2 * (3 + 1)", "add rsi, -8"),
         ];
         test_correctness::<Instruction>(&tests);
     }

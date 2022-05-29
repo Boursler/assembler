@@ -139,11 +139,24 @@ impl fmt::Display for MemOperand {
     }
 }
 
+impl TryFrom<Expr> for i32 {
+    type Error = ParseError;
+    fn try_from(value: Expr) -> Result<Self, Self::Error> {
+        use Expr::*;
+        match value.simplify() {
+            Num(x) => Ok(x),
+            t => Err(ParseError::InvalidIntExpr(format!(
+                "Intexpr should parse to a single number but got {}",
+                t
+            ))),
+        }
+    }
+}
 impl TryFrom<Expr> for MemOperand {
-    type Error = String;
+    type Error = ParseError;
     fn try_from(value: Expr) -> Result<Self, Self::Error> {
         //expr is binary tree, traverse iter
-        fn traverse(tree: Expr, curr: MemOperand) -> Result<MemOperand, String> {
+        fn traverse(tree: Expr, curr: MemOperand) -> Result<MemOperand, ParseError> {
             use BinaryOp::*;
             use Expr::*;
             match tree {
@@ -175,7 +188,7 @@ impl TryFrom<Expr> for MemOperand {
                             displacement: curr.displacement,
                         });
                     } else {
-                        return Err(format!("Too many registers"));
+                        return Err(ParseError::InvalidMemExpr(format!("Too many registers")));
                     }
                 }
                 Op(Mul, box Num(x), box Reg(y)) => {
@@ -212,11 +225,15 @@ impl TryFrom<Expr> for MemOperand {
                             displacement: curr.displacement,
                         });
                     } else {
-                        return Err(format!("Too many scaled registers"));
+                        return Err(ParseError::InvalidMemExpr(format!(
+                            "Too many scaled registers"
+                        )));
                     }
                 }
                 Op(Add, x, y) => Ok(traverse(*y, traverse(*x, curr)?)?),
-                _ => Err(format!("Invalid MemOperand from Expr")),
+                _ => Err(ParseError::InvalidMemExpr(format!(
+                    "Invalid MemOperand from Expr"
+                ))),
             }
         }
         traverse(

@@ -210,21 +210,13 @@ pub fn parse_operand<L>(lex: L) -> ParseResult<Operand, L>
 where
     L: Lexer,
 {
-    let (n, lex) = next(lex);
-    let token = match n {
-        Some(Ok(x)) => x,
-        Some(Err(x)) => return Err(ParseError::InvalidToken(x)),
-        None => return Err(ParseError::InvalidOperand(format!("No operand supplied"))),
-    };
+    let lex_copy = lex.clone();
+    let (token, lex) = get_next_token(
+        lex,
+        ParseError::InvalidOperand(format!("No operand supplied")),
+    )?;
     match token {
         Token::Reg(x) => Ok((Operand::Reg(x), lex)),
-        Token::Num(x) => Ok((Operand::Imm(x), lex)),
-        Token::Op(BinaryOp::Sub) => match parse_operand(lex)? {
-            (Operand::Imm(x), l) => Ok((Operand::Imm(-x), l)),
-            _ => Err(ParseError::InvalidOperand(format!(
-                "Constant expr not yet implemented"
-            ))),
-        },
         Token::BracketOpen => match parse_memexpr(lex) {
             Ok((m, l)) => {
                 let (n, lex) = next(l);
@@ -238,8 +230,19 @@ where
             }
             Err(x) => Err(x),
         },
-        _ => Err(ParseError::InvalidOperand(format!("No valid operand"))),
+        _ => match parse_intexpr(lex_copy) {
+            Ok((t, l)) => Ok((Operand::Imm(t), l)),
+            Err(_) => Err(ParseError::InvalidOperand(format!("No operand supplied"))),
+        },
     }
+}
+
+fn parse_intexpr<L>(lex: L) -> ParseResult<i32, L>
+where
+    L: Lexer,
+{
+    let (x, l) = parse_expr(lex)?;
+    Ok((i32::try_from(x)?, l))
 }
 
 fn parse_memexpr<L>(lex: L) -> ParseResult<MemOperand, L>
@@ -247,10 +250,7 @@ where
     L: Lexer,
 {
     let (x, l) = parse_expr(lex)?;
-    match MemOperand::try_from(x) {
-        Ok(x) => Ok((x, l)),
-        Err(e) => Err(ParseError::InvalidMemExpr(e)),
-    }
+    Ok((MemOperand::try_from(x)?, l))
 }
 
 struct ExprOp {

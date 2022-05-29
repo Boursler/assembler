@@ -1,6 +1,7 @@
 use crate::instruction::Operand;
 use crate::lexer::{BinaryOp, IntoLexer};
-use crate::parser::{parse_operand, GrammarError};
+use crate::parse_error::ParseError;
+use crate::parser::{parse_expr, parse_operand};
 use crate::registers::Register;
 use std::fmt;
 use std::str::FromStr;
@@ -23,7 +24,22 @@ pub enum Expr {
     UnaryOp(BinaryOp, Box<Expr>),
 }
 
-//fix use of boxes
+impl FromStr for Expr {
+    type Err = ParseError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match parse_expr(s.into_lexer()) {
+            Ok((x, mut l)) => {
+                if l.next().is_none() {
+                    Ok(x)
+                } else {
+                    Err(ParseError::UnusedTokens)
+                }
+            }
+            Err(x) => Err(x),
+        }
+    }
+}
+
 impl Expr {
     fn simplify(&self) -> Expr {
         use BinaryOp::*;
@@ -203,7 +219,6 @@ impl TryFrom<Expr> for MemOperand {
                 _ => Err(format!("Invalid MemOperand from Expr")),
             }
         }
-        println!("{}", value.simplify().to_string());
         traverse(
             value.simplify(),
             MemOperand {
@@ -216,34 +231,30 @@ impl TryFrom<Expr> for MemOperand {
     }
 }
 impl TryFrom<Operand> for MemOperand {
-    type Error = String;
+    type Error = ParseError;
     fn try_from(s: Operand) -> Result<Self, Self::Error> {
         if let Operand::Mem(x) = s {
             return Ok(x);
         } else {
-            return Err("Operand is not a Memory Operand".to_string());
+            return Err(ParseError::UnexpectedOperandKind(
+                "Expected Memory Operand".to_string(),
+            ));
         }
     }
 }
 
 impl FromStr for MemOperand {
-    type Err = String;
-    fn from_str(s: &str) -> Result<Self, String> {
+    type Err = ParseError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match parse_operand(s.into_lexer()) {
             Ok((x, mut l)) => {
                 if l.next().is_none() {
                     MemOperand::try_from(x)
                 } else {
-                    Err("Trailing Garbage".to_string())
+                    Err(ParseError::UnusedTokens)
                 }
             }
-            Err(GrammarError::InvalidMemExpr(x)) => {
-                Err(format!("Invalid MemExpr {}", x.to_string()))
-            }
-            Err(GrammarError::InvalidOperand(x)) => {
-                Err(format!("Invalid Operand {}", x.to_string()))
-            }
-            _ => Err(format!("Failed")),
+            Err(x) => Err(x),
         }
     }
 }
@@ -251,13 +262,11 @@ impl FromStr for MemOperand {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::registers::{r8, rax, rcx};
+    use crate::test_helpers::*;
 
     #[test]
-    fn test_mem_operand_from_expr() {}
-    #[test]
     fn test_mem_operand_from_str() {
-        let correct_tests: Vec<(&str, &str)> = vec![
+        let tests: Vec<(&str, &str)> = vec![
             ("[rax]", "[rax]"),
             ("[1 - 1]", "[0]"),
             ("[4 * (rax + -10) + rbx]", "[rbx + 4 * rax + -40]"),
@@ -268,12 +277,6 @@ mod tests {
             ("[2*(rax + -10) + 1 * rbx]", "[rbx + 2 * rax + -20]"),
             ("[3 * rax]", "[rax + 2 * rax]"),
         ];
-        for test in correct_tests {
-            let out = match MemOperand::from_str(test.0) {
-                Ok(t) => t.to_string(),
-                Err(e) => panic!("parsing {} resulted in error {:?}", test.0, e),
-            };
-            assert_eq!(out, test.1)
-        }
+        test_correctness::<MemOperand>(&tests);
     }
 }

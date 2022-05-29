@@ -2,11 +2,14 @@
 mod instruction;
 mod lexer;
 mod mem_op;
+mod parse_error;
 mod parser;
 mod registers;
+mod test_helpers;
 
 use instruction::Instruction;
 use mem_op::MemOperand;
+use parse_error::ParseError;
 use registers::Register;
 use std::env;
 use std::fmt;
@@ -31,7 +34,7 @@ fn main() {
         }
     };
 
-    let instrs: Vec<Result<Instruction, String>> = BufReader::new(file)
+    let instrs: Vec<Result<Instruction, ParseError>> = BufReader::new(file)
         .lines()
         .map(|line| line.unwrap().trim().parse::<Instruction>())
         .collect();

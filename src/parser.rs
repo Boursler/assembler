@@ -1,6 +1,7 @@
 use crate::instruction::{Instruction, Operand, Ops};
 use crate::lexer::{BinaryOp, IntoLexer, Keyword, Label, Lexer, Token};
 use crate::mem_op::{Expr, MemOperand};
+use crate::parse_error::ParseError;
 use crate::registers::Register;
 
 #[derive(Debug, Clone)]
@@ -39,26 +40,11 @@ where
     (lex.next(), lex)
 }
 
-// Parse result must return: A Language construct or Error, Lexer_state (rewound if error was encountered), and optionally accumulated error messages to print
-#[derive(Debug)]
-pub enum GrammarError {
-    // Errors have the form ErrorType(msg)
-    InvalidProgram(String),
-    InvalidFunction(String),
-    InvalidToken(String),
-    InvalidStatement(String),
-    InvalidInstruction(String),
-    InvalidOperand(String),
-    InvalidMemExpr(String),
-    Custom(String),
-    None,
-}
-
-type ParseResult<T, L> = Result<(T, L), GrammarError>;
+type ParseResult<T, L> = Result<(T, L), ParseError>;
 
 //recvd entire program call parse on every token in program
 //building pt
-fn parse<L>(lex: L) -> Result<Program, GrammarError>
+fn parse<L>(lex: L) -> Result<Program, ParseError>
 where
     L: Lexer,
 {
@@ -77,7 +63,7 @@ where
     let (n, lex) = next(lex);
     let token = match n {
         Some(Ok(x)) => x,
-        Some(Err(x)) => return Err(GrammarError::InvalidToken(x)),
+        Some(Err(x)) => return Err(ParseError::InvalidToken(x)),
         None => return Ok((p, lex)),
     };
     let (new_p, new_lex) = match token {
@@ -90,7 +76,7 @@ where
             ),
             Err(e) => return Err(e),
         },
-        _ => return Err(GrammarError::InvalidProgram(format!("Invalid Program"))),
+        _ => return Err(ParseError::InvalidProgram(format!("Invalid Program"))),
     };
     parse_helper(new_p, new_lex)
 }
@@ -103,13 +89,13 @@ where
     let label = match n {
         Some(Ok(Token::Lab(x))) => x,
         Some(Ok(_)) => {
-            return Err(GrammarError::InvalidFunction(format!(
+            return Err(ParseError::InvalidFunction(format!(
                 "Label name must follow keyword fn"
             )))
         }
-        Some(Err(x)) => return Err(GrammarError::InvalidToken(x)),
+        Some(Err(x)) => return Err(ParseError::InvalidToken(x)),
         None => {
-            return Err(GrammarError::InvalidFunction(format!(
+            return Err(ParseError::InvalidFunction(format!(
                 "Label name must follow keyword fn"
             )))
         }
@@ -155,9 +141,9 @@ where
     let (n, lex) = next(lex);
     let token = match n {
         Some(Ok(x)) => x,
-        Some(Err(x)) => return Err(GrammarError::InvalidToken(x)),
+        Some(Err(x)) => return Err(ParseError::InvalidToken(x)),
         None => {
-            return Err(GrammarError::InvalidStatement(format!(
+            return Err(ParseError::InvalidStatement(format!(
                 "No token supplied for statement"
             )))
         }
@@ -178,9 +164,9 @@ where
     let (n, lex) = next(lex);
     let token = match n {
         Some(Ok(x)) => x,
-        Some(Err(x)) => return Err(GrammarError::InvalidToken(x)),
+        Some(Err(x)) => return Err(ParseError::InvalidToken(x)),
         None => {
-            return Err(GrammarError::InvalidInstruction(format!(
+            return Err(ParseError::InvalidInstruction(format!(
                 "No instruction supplied"
             )))
         }
@@ -188,7 +174,7 @@ where
     let instr = match token {
         Token::InstrOp(x) => x,
         _ => {
-            return Err(GrammarError::InvalidInstruction(format!(
+            return Err(ParseError::InvalidInstruction(format!(
                 "Instruction must begin with an op"
             )))
         }
@@ -224,8 +210,8 @@ where
     let (n, lex) = next(lex);
     let token = match n {
         Some(Ok(x)) => x,
-        Some(Err(x)) => return Err(GrammarError::InvalidToken(x)),
-        None => return Err(GrammarError::InvalidOperand(format!("No operand supplied"))),
+        Some(Err(x)) => return Err(ParseError::InvalidToken(x)),
+        None => return Err(ParseError::InvalidOperand(format!("No operand supplied"))),
     };
     match token {
         Token::Reg(x) => Ok((Operand::Reg(x), lex)),
@@ -235,15 +221,15 @@ where
                 let (n, lex) = next(l);
                 match n {
                     Some(Ok(Token::BracketClose)) => Ok((Operand::Mem(m), lex)),
-                    Some(Err(x)) => Err(GrammarError::InvalidToken(x)),
-                    _ => Err(GrammarError::InvalidOperand(format!(
+                    Some(Err(x)) => Err(ParseError::InvalidToken(x)),
+                    _ => Err(ParseError::InvalidOperand(format!(
                         "No closing bracket for memory operand"
                     ))),
                 }
             }
             Err(x) => Err(x),
         },
-        _ => Err(GrammarError::InvalidOperand(format!("No valid operand"))),
+        _ => Err(ParseError::InvalidOperand(format!("No valid operand"))),
     }
 }
 
@@ -251,10 +237,10 @@ fn parse_memexpr<L>(lex: L) -> ParseResult<MemOperand, L>
 where
     L: Lexer,
 {
-    let (x, l) = parseExpr(lex)?;
+    let (x, l) = parse_expr(lex)?;
     match MemOperand::try_from(x) {
         Ok(x) => Ok((x, l)),
-        Err(e) => Err(GrammarError::InvalidMemExpr(e)),
+        Err(e) => Err(ParseError::InvalidMemExpr(e)),
     }
 }
 
@@ -263,7 +249,7 @@ struct ExprOp {
     op: Option<BinaryOp>,
 }
 
-fn parseExpr<L>(lex: L) -> ParseResult<Expr, L>
+pub fn parse_expr<L>(lex: L) -> ParseResult<Expr, L>
 where
     L: Lexer,
 {
@@ -277,14 +263,14 @@ where
     Ok((result.unwrap().expr, lex))
 }
 
-fn get_next_token<L>(lex: L, none_err: GrammarError) -> ParseResult<Token, L>
+fn get_next_token<L>(lex: L, none_err: ParseError) -> ParseResult<Token, L>
 where
     L: Lexer,
 {
     let (n, lex) = next(lex);
     match n {
         Some(Ok(x)) => Ok((x, lex)),
-        Some(Err(x)) => Err(GrammarError::InvalidToken(x)),
+        Some(Err(x)) => Err(ParseError::InvalidToken(x)),
         None => Err(none_err),
     }
 }
@@ -296,7 +282,7 @@ where
     let (n, lex) = next(lex);
     match n {
         Some(Ok(x)) => Ok((Some(x), lex)),
-        Some(Err(x)) => Err(GrammarError::InvalidToken(x)),
+        Some(Err(x)) => Err(ParseError::InvalidToken(x)),
         None => Ok((None, lex)),
     }
 }
@@ -325,7 +311,7 @@ where
 {
     let (token, lex) = get_next_token(
         lex,
-        GrammarError::InvalidMemExpr(format!("Unmatched opr and expr")),
+        ParseError::InvalidMemExpr(format!("Unmatched opr and expr")),
     )?;
 
     match token {
@@ -337,21 +323,18 @@ where
             Ok((Expr::UnaryOp(BinaryOp::Sub, Box::new(expr)), lex))
         }
         Token::ParenOpen => {
-            let (expr, lex) = parseExpr(lex)?;
-            if let Ok((Token::ParenClose, lex)) = get_next_token(lex, GrammarError::None) {
+            let (expr, lex) = parse_expr(lex)?;
+            if let Ok((Token::ParenClose, lex)) = get_next_token(lex, ParseError::None) {
                 Ok((expr, lex))
             } else {
-                return Err(GrammarError::InvalidMemExpr(format!(
+                return Err(ParseError::InvalidMemExpr(format!(
                     "Missing Closing Parenthesis"
                 )));
             }
         }
-        _ => return Err(GrammarError::InvalidMemExpr(format!("unimplemented"))),
+        _ => return Err(ParseError::InvalidMemExpr(format!("unimplemented"))),
     }
 }
-// parse_block(Seq<ExprOp>){
-
-// }
 
 fn parse_op_category(seq: Vec<ExprOp>, category: &Vec<BinaryOp>) -> Vec<ExprOp> {
     if (seq.len() <= 1) {
@@ -391,38 +374,21 @@ fn parse_op_category(seq: Vec<ExprOp>, category: &Vec<BinaryOp>) -> Vec<ExprOp> 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn test_correct_expr(s: &(&str, &str)) {
-        let input = s.0;
-        let output = s.1;
-        let (result, lex) = match parseExpr(input.into_lexer()) {
-            Ok(x) => x,
-            Err(x) => panic!(
-                "Failed to parse {}, parsing failed with error {:?}.",
-                input, x
-            ),
-        };
-
-        let remaining_tokens: Vec<Token> = lex.map(|x| x.unwrap()).collect();
-        assert_eq!(remaining_tokens[0], Token::BracketClose);
-        assert_eq!(result.to_string(), output);
-    }
+    use crate::test_helpers::*;
 
     #[test]
     fn test_parse_expr() {
-        let correct_tests: Vec<(&str, &str)> = vec![
-            ("1 + rax]", "(1 + rax)"),
-            ("1 + -1]", "(1 + -1)"),
-            ("-1 + rax]", "(-1 + rax)"),
-            ("1 + 2 * 3]", "(1 + (2 * 3))"),
-            ("2 * 3 + 1]", "((2 * 3) + 1)"),
-            ("2 * -3 + 1]", "((2 * -3) + 1)"),
-            ("1 + -(2 * 3)]", "(1 + -(2 * 3))"),
-            ("-(2 * -3) + 1]", "(-(2 * -3) + 1)"),
-            ("rax * -3 + rax]", "((rax * -3) + rax)"),
+        let tests: Vec<(&str, &str)> = vec![
+            ("1 + rax", "(1 + rax)"),
+            ("1 + -1", "(1 + -1)"),
+            ("-1 + rax", "(-1 + rax)"),
+            ("1 + 2 * 3", "(1 + (2 * 3))"),
+            ("2 * 3 + 1", "((2 * 3) + 1)"),
+            ("2 * -3 + 1", "((2 * -3) + 1)"),
+            ("1 + -(2 * 3)", "(1 + -(2 * 3))"),
+            ("-(2 * -3) + 1", "(-(2 * -3) + 1)"),
+            ("rax * -3 + rax", "((rax * -3) + rax)"),
         ];
-        for test in &correct_tests {
-            test_correct_expr(test);
-        }
+        test_correctness::<Expr>(&tests);
     }
 }

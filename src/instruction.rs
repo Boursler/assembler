@@ -1,4 +1,7 @@
+use crate::lexer::IntoLexer;
 use crate::mem_op::MemOperand;
+use crate::parse_error::ParseError;
+use crate::parser::parse_operand;
 use crate::registers::Register;
 use std::fmt;
 use std::str::FromStr;
@@ -24,8 +27,8 @@ impl fmt::Display for Instruction {
 }
 
 impl FromStr for Instruction {
-    type Err = String;
-    fn from_str(s: &str) -> Result<Self, String> {
+    type Err = ParseError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         let (ins, rem) = match s.split_once(char::is_whitespace) {
             None => (s, ""),
             Some(x) => x,
@@ -51,8 +54,8 @@ pub enum Ops {
 }
 
 impl FromStr for Ops {
-    type Err = String;
-    fn from_str(s: &str) -> Result<Self, String> {
+    type Err = ParseError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "add" => Ok(Ops::Add),
             "sub" => Ok(Ops::Sub),
@@ -60,7 +63,7 @@ impl FromStr for Ops {
             "xor" => Ok(Ops::Xor),
             "and" => Ok(Ops::And),
             "mov" => Ok(Ops::Mov),
-            _ => Err(format!("unkown op '{}'", s)),
+            _ => Err(ParseError::InvalidOp(format!("{}", s))),
         }
     }
 }
@@ -98,18 +101,20 @@ impl fmt::Display for Operand {
 }
 
 impl FromStr for Operand {
-    type Err = String;
-    fn from_str(s: &str) -> Result<Self, String> {
+    type Err = ParseError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         if s.is_empty() {
-            Ok(Operand::Unused)
-        } else if let Ok(x) = s.parse::<Register>() {
-            Ok(Operand::Reg(x))
-        } else if let Ok(x) = s.parse::<i32>() {
-            Ok(Operand::Imm(x))
-        } else if let Ok(x) = s.parse::<MemOperand>() {
-            Ok(Operand::Mem(x))
-        } else {
-            Err(format!("Invalid Operand: '{}'", s))
+            return Ok(Operand::Unused);
+        }
+        match parse_operand(s.into_lexer()) {
+            Ok((x, mut l)) => {
+                if l.next().is_none() {
+                    Ok(x)
+                } else {
+                    Err(ParseError::UnusedTokens)
+                }
+            }
+            Err(x) => Err(x),
         }
     }
 }
@@ -117,54 +122,19 @@ impl FromStr for Operand {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::registers::{r8, rax, rcx};
+    use crate::test_helpers::*;
 
     #[test]
     fn test_instruction_from_str() {
-        assert_eq!(
-            "add".parse::<Instruction>(),
-            Ok(Instruction {
-                operation: Ops::Add,
-                dst: Operand::Unused,
-                src1: Operand::Unused
-            })
-        );
-
-        assert_eq!(
-            "sub   rax,   [rcx + 8]".parse::<Instruction>(),
-            Ok(Instruction {
-                operation: Ops::Sub,
-                dst: Operand::Reg(rax),
-                src1: Operand::Mem(MemOperand {
-                    source: Some(rcx),
-                    index: None,
-                    scale: 0,
-                    displacement: 8,
-                })
-            })
-        );
-
-        assert_eq!(
-            "mov r8, -30".parse::<Instruction>(),
-            Ok(Instruction {
-                operation: Ops::Mov,
-                dst: Operand::Reg(r8),
-                src1: Operand::Imm(-30),
-            })
-        );
-
-        assert_eq!(
-            "xor [r8 + 2*rax + -30] , rcx".parse::<Instruction>(),
-            Ok(Instruction {
-                operation: Ops::Xor,
-                dst: Operand::Mem(MemOperand {
-                    source: Some(r8),
-                    index: Some(rax),
-                    scale: 2,
-                    displacement: -30,
-                }),
-                src1: Operand::Reg(rcx),
-            })
-        );
+        let tests: Vec<(&str, &str)> = vec![
+            ("add", "add"),
+            ("sub  rax,  [rcx  + 8]", "sub rax, [rcx + 8]"),
+            ("mov r8, -30", "mov r8, -30"),
+            (
+                "xor [r8 + 2*rax - 30], rcx",
+                "xor [r8 + 2 * rax + -30], rcx",
+            ),
+        ];
+        test_correctness::<Instruction>(&tests);
     }
 }

@@ -46,6 +46,11 @@ pub struct Label {
     name: String,
 }
 
+impl fmt::Display for Label {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.name.to_string())
+    }
+}
 impl FromStr for Label {
     type Err = String;
 
@@ -54,10 +59,6 @@ impl FromStr for Label {
         if len < 2 {
             return Err(format!("Empty string is not a label"));
         }
-        let s = match s.strip_suffix(":") {
-            Some(x) => x,
-            None => return Err(format!("Labels must end in a :")),
-        };
 
         for (idx, c) in s.chars().enumerate() {
             if idx == 0 {
@@ -91,6 +92,7 @@ pub enum Token {
     Lab(Label),
     InstrOp(Ops),
     Comma,
+    Colon,
 }
 
 pub trait Lexer: Iterator<Item = Result<Token, String>> + Clone {}
@@ -125,15 +127,16 @@ impl<'a> TryFrom<&'a str> for Token {
             "]" => BracketClose,
             "fn" => Key(Fn),
             "," => Comma,
+            ":" => Colon,
             t => {
                 if let Ok(x) = t.parse::<Register>() {
                     Reg(x)
                 } else if let Ok(x) = t.parse::<i32>() {
                     Num(x)
-                } else if let Ok(x) = t.parse::<Label>() {
-                    Lab(x)
                 } else if let Ok(x) = t.parse::<Ops>() {
                     InstrOp(x)
+                } else if let Ok(x) = t.parse::<Label>() {
+                    Lab(x)
                 } else {
                     return Err(format!("lexing error invalid input: {}", t));
                 }
@@ -155,7 +158,7 @@ impl<'a> Iterator for StrLexer<'a> {
         fn split(s: &str) -> (&str, &str) {
             let s = s.trim_start();
             let i = s
-                .find(|c: char| c.is_whitespace() || "()[]|^&*/+-%<>,".contains(c))
+                .find(|c: char| c.is_whitespace() || "()[]|^&*/+-%<>,:".contains(c))
                 .unwrap_or(s.len());
 
             if i == 0 {
@@ -193,6 +196,7 @@ mod tests {
             Lab(Label {
                 name: "test".to_string(),
             }),
+            Colon,
             Reg(rax),
             Op(Add),
             Num(23),

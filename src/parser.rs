@@ -3,6 +3,8 @@ use crate::lexer::{BinaryOp, IntoLexer, Keyword, Label, Lexer, Token};
 use crate::mem_op::{Expr, MemOperand};
 use crate::parse_error::ParseError;
 use crate::registers::Register;
+use std::fmt;
+use std::str::FromStr;
 
 #[derive(Debug, Clone)]
 enum Statement {
@@ -10,10 +12,52 @@ enum Statement {
     I(Instruction),
 }
 
+impl fmt::Display for Statement {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            match &self {
+                Statement::L(x) => x.to_string(),
+                Statement::I(x) => x.to_string(),
+            }
+        )
+    }
+}
+
 #[derive(Debug, Clone)]
 struct Function {
     label: Label,
     stmts: Vec<Statement>,
+}
+
+impl fmt::Display for Function {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "fn {}:\n", self.label)?;
+        for stmt in &self.stmts {
+            match stmt {
+                Statement::L(x) => write!(f, "{}:\n", x)?,
+                Statement::I(x) => write!(f, "\t{}\n", x)?,
+            };
+        }
+        write!(f, "")
+    }
+}
+
+impl FromStr for Function {
+    type Err = ParseError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match parse_function(s.into_lexer()) {
+            Ok((x, mut l)) => {
+                if l.next().is_none() {
+                    Ok(x)
+                } else {
+                    Err(ParseError::UnusedTokens)
+                }
+            }
+            Err(x) => Err(x),
+        }
+    }
 }
 
 struct Program {
@@ -85,21 +129,35 @@ fn parse_function<L>(lex: L) -> ParseResult<Function, L>
 where
     L: Lexer,
 {
-    let (n, lex) = next(lex);
-    let label = match n {
-        Some(Ok(Token::Lab(x))) => x,
-        Some(Ok(_)) => {
-            return Err(ParseError::InvalidFunction(format!(
-                "Label name must follow keyword fn"
-            )))
-        }
-        Some(Err(x)) => return Err(ParseError::InvalidToken(x)),
-        None => {
-            return Err(ParseError::InvalidFunction(format!(
-                "Label name must follow keyword fn"
-            )))
-        }
+    let (token, lex) = get_next_token(
+        lex,
+        ParseError::InvalidFunction(format!("No function keyword supplied")),
+    )?;
+    if token != Token::Key(Keyword::Fn) {
+        return Err(ParseError::InvalidFunction(format!(
+            "Function must start with keyword Fn"
+        )));
+    }
+    let (token, lex) = get_next_token(
+        lex,
+        ParseError::InvalidFunction(format!("No function name supplied")),
+    )?;
+    let label = if let Token::Lab(x) = token {
+        x
+    } else {
+        return Err(ParseError::InvalidFunction(format!(
+            "Function name must be a valid label"
+        )));
     };
+    let (token, lex) = get_next_token(
+        lex,
+        ParseError::InvalidFunction(format!("Colon must follow function name")),
+    )?;
+    if token != Token::Colon {
+        return Err(ParseError::InvalidFunction(format!(
+            "No colon found after function name"
+        )));
+    }
     parse_function_stmts(
         Function {
             label,
@@ -138,19 +196,25 @@ fn parse_stmt<L>(lex: L) -> ParseResult<Statement, L>
 where
     L: Lexer,
 {
-    let (n, lex) = next(lex);
-    let token = match n {
-        Some(Ok(x)) => x,
-        Some(Err(x)) => return Err(ParseError::InvalidToken(x)),
-        None => {
-            return Err(ParseError::InvalidStatement(format!(
-                "No token supplied for statement"
-            )))
-        }
-    };
+    let lex_copy = lex.clone();
+    let (token, lex) = get_next_token(
+        lex,
+        ParseError::InvalidStatement(format!("No token supplied for statement")),
+    )?;
     match token {
-        Token::Lab(x) => Ok((Statement::L(x), lex)),
-        _ => match parse_instr(lex) {
+        Token::Lab(x) => {
+            let (token, lex) = get_next_token(
+                lex,
+                ParseError::InvalidStatement(format!("Colon must follow label in statement")),
+            )?;
+            if token != Token::Colon {
+                return Err(ParseError::InvalidStatement(format!(
+                    "No colon found after label in statement"
+                )));
+            }
+            Ok((Statement::L(x), lex))
+        }
+        _ => match parse_instr(lex_copy) {
             Ok((x, l)) => Ok((Statement::I(x), l)),
             Err(x) => Err(x),
         },
@@ -173,9 +237,10 @@ where
     };
     let instr = match token {
         Token::InstrOp(x) => x,
-        _ => {
+        e => {
             return Err(ParseError::InvalidInstruction(format!(
-                "Instruction must begin with an op"
+                "Instruction must begin with an op instead found {:?}",
+                e
             )))
         }
     };
@@ -399,5 +464,14 @@ mod tests {
             ("rax * -3 + rax", "((rax * -3) + rax)"),
         ];
         test_correctness::<Expr>(&tests);
+    }
+
+    #[test]
+    fn test_parse_function() {
+        let tests: Vec<(&str, &str)> = vec![(
+            "fn coolname: \n add rsp, 8\n\tlabel:\nret",
+            "fn coolname:\n\tadd rsp, 8\nlabel:\n\tret\n",
+        )];
+        test_correctness::<Function>(&tests);
     }
 }

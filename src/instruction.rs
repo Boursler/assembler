@@ -50,6 +50,8 @@ pub enum Ops {
     Xor,
     And,
     Mov,
+    Jmp,
+    Ret,
 }
 
 impl FromStr for Ops {
@@ -62,6 +64,8 @@ impl FromStr for Ops {
             "xor" => Ok(Ops::Xor),
             "and" => Ok(Ops::And),
             "mov" => Ok(Ops::Mov),
+            "jmp" => Ok(Ops::Jmp),
+            "ret" => Ok(Ops::Ret),
             _ => Err(ParseError::InvalidOp(format!("{}", s))),
         }
     }
@@ -76,6 +80,8 @@ impl fmt::Display for Ops {
             Ops::Xor => write!(f, "xor"),
             Ops::And => write!(f, "and"),
             Ops::Mov => write!(f, "mov"),
+            Ops::Jmp => write!(f, "jmp"),
+            Ops::Ret => write!(f, "ret"),
         }
     }
 }

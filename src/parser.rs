@@ -64,6 +64,25 @@ struct Program {
     functions: Vec<Function>,
 }
 
+impl fmt::Display for Program {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            self.functions
+                .iter()
+                .fold("".to_string(), |acc, f| acc + &f.to_string())
+        )
+    }
+}
+
+impl FromStr for Program {
+    type Err = ParseError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        parse(s.into_lexer())
+    }
+}
+
 // Use rust move semantics to hide mutation generally enforced by datatypes.
 // Because data is moved, orignating structure cannot use the mutated data.
 fn concat<T>(mut v: Vec<T>, mut t: Vec<T>) -> Vec<T> {
@@ -104,23 +123,16 @@ fn parse_helper<L>(p: Program, lex: L) -> ParseResult<Program, L>
 where
     L: Lexer,
 {
-    let (n, lex) = next(lex);
-    let token = match n {
-        Some(Ok(x)) => x,
-        Some(Err(x)) => return Err(ParseError::InvalidToken(x)),
-        None => return Ok((p, lex)),
-    };
-    let (new_p, new_lex) = match token {
-        Token::Key(Keyword::Fn) => match parse_function(lex) {
-            Ok((f, l)) => (
-                Program {
-                    functions: append(p.functions, f),
-                },
-                l,
-            ),
-            Err(e) => return Err(e),
-        },
-        _ => return Err(ParseError::InvalidProgram(format!("Invalid Program"))),
+    let lex_copy = lex.clone();
+    let (new_p, new_lex) = match parse_function(lex) {
+        Ok((f, l)) => (
+            Program {
+                functions: append(p.functions, f),
+            },
+            l,
+        ),
+        Err(ParseError::EmptyLexer) => return Ok((p, lex_copy)),
+        Err(e) => return Err(e),
     };
     parse_helper(new_p, new_lex)
 }
@@ -129,10 +141,7 @@ fn parse_function<L>(lex: L) -> ParseResult<Function, L>
 where
     L: Lexer,
 {
-    let (token, lex) = get_next_token(
-        lex,
-        ParseError::InvalidFunction(format!("No function keyword supplied")),
-    )?;
+    let (token, lex) = get_next_token(lex, ParseError::EmptyLexer)?;
     if token != Token::Key(Keyword::Fn) {
         return Err(ParseError::InvalidFunction(format!(
             "Function must start with keyword Fn"
@@ -473,5 +482,15 @@ mod tests {
             "fn coolname:\n\tadd rsp, 8\nlabel:\n\tret\n",
         )];
         test_correctness::<Function>(&tests);
+    }
+    #[test]
+    fn test_parse() {
+        let tests: Vec<(&str, &str)> = vec![(
+            "fn jumpsomewhere: \n add rsp, 8\n\tlabel:\nret
+fn dostuff: \n xor rbx, rbx\n\tlabel:\nret",
+            "fn jumpsomewhere:\n\tadd rsp, 8\nlabel:\n\tret
+fn dostuff:\n\txor rbx, rbx\nlabel:\n\tret\n",
+        )];
+        test_correctness::<Program>(&tests);
     }
 }

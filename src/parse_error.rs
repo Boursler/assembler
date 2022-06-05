@@ -4,6 +4,7 @@ use std::fmt;
 pub enum ParseError {
     // Errors have the form ErrorType(msg)
     InvalidProgram(String),
+    EmptyLexer,
     InvalidFunction(String),
     InvalidToken(String),
     InvalidStatement(String),
@@ -22,6 +23,7 @@ impl fmt::Display for ParseError {
         use ParseError::*;
         match self {
             InvalidProgram(x) => write!(f, "Invalid Program: {}", x),
+            EmptyLexer => write!(f, "Empty lexer supplied"),
             InvalidFunction(x) => write!(f, "Invalid Function: {}", x),
             InvalidToken(x) => write!(f, "Invalid Token: {}", x),
             InvalidStatement(x) => write!(f, "Invalid Statement: {}", x),

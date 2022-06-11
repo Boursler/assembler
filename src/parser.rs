@@ -1,8 +1,7 @@
-use crate::instruction::{Instruction, Operand, Ops};
+use crate::instruction::{Instruction, Operand};
 use crate::lexer::{BinaryOp, IntoLexer, Keyword, Label, Lexer, Token};
 use crate::mem_op::{Expr, MemOperand};
 use crate::parse_error::ParseError;
-use crate::registers::Register;
 use std::fmt;
 use std::str::FromStr;
 
@@ -33,11 +32,11 @@ struct Function {
 
 impl fmt::Display for Function {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "fn {}:\n", self.label)?;
+        writeln!(f, "fn {}:", self.label)?;
         for stmt in &self.stmts {
             match stmt {
-                Statement::L(x) => write!(f, "{}:\n", x)?,
-                Statement::I(x) => write!(f, "\t{}\n", x)?,
+                Statement::L(x) => writeln!(f, "{}:", x)?,
+                Statement::I(x) => writeln!(f, "\t{}", x)?,
             };
         }
         write!(f, "")
@@ -60,7 +59,7 @@ impl FromStr for Function {
     }
 }
 
-struct Program {
+pub struct Program {
     functions: Vec<Function>,
 }
 
@@ -89,7 +88,7 @@ fn concat<T>(mut v: Vec<T>, mut t: Vec<T>) -> Vec<T> {
     v.append(&mut t);
     v
 }
-fn append<T>(mut v: Vec<T>, mut t: T) -> Vec<T> {
+fn append<T>(v: Vec<T>, t: T) -> Vec<T> {
     concat(v, vec![t])
 }
 fn pop<T>(mut v: Vec<T>) -> (Option<T>, Vec<T>) {
@@ -107,7 +106,7 @@ type ParseResult<T, L> = Result<(T, L), ParseError>;
 
 //recvd entire program call parse on every token in program
 //building pt
-fn parse<L>(lex: L) -> Result<Program, ParseError>
+pub fn parse<L>(lex: L) -> Result<Program, ParseError>
 where
     L: Lexer,
 {
@@ -426,14 +425,14 @@ fn parse_op_category(seq: Vec<ExprOp>, category: &Vec<BinaryOp>) -> Vec<ExprOp> 
 
     let (last, seq) = match pop(seq) {
         (Some(t), s) => (t, s),
-        (None, s) => unreachable!(),
+        (None, _s) => unreachable!(),
     };
 
     let seq = parse_op_category(seq, category);
 
     let (penultimate, seq) = match pop(seq) {
         (Some(t), s) => (t, s),
-        (None, s) => unreachable!(),
+        (None, _s) => unreachable!(),
     };
 
     let needs_combined = penultimate

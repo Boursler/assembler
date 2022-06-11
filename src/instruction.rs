@@ -66,7 +66,7 @@ impl FromStr for Ops {
             "mov" => Ok(Ops::Mov),
             "jmp" => Ok(Ops::Jmp),
             "ret" => Ok(Ops::Ret),
-            _ => Err(ParseError::InvalidOp(format!("{}", s))),
+            _ => Err(ParseError::InvalidOp(s.to_string())),
         }
     }
 }

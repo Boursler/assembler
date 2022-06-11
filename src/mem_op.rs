@@ -102,13 +102,8 @@ impl fmt::Display for Expr {
             match &self {
                 Expr::Num(x) => x.to_string(),
                 Expr::Reg(x) => x.to_string(),
-                Expr::Op(op, left, right) => format!(
-                    "({} {} {})",
-                    (*left).to_string(),
-                    op.to_string(),
-                    (*right).to_string()
-                ),
-                Expr::UnaryOp(op, expr) => format!("{}{}", op.to_string(), (*expr).to_string()),
+                Expr::Op(op, left, right) => format!("({} {} {})", left, op, right),
+                Expr::UnaryOp(op, expr) => format!("{}{}", op, expr),
             }
         )
     }
@@ -162,77 +157,82 @@ impl TryFrom<Expr> for MemOperand {
             match tree {
                 Num(x) => {
                     if curr.displacement == 0 {
-                        return Ok(MemOperand {
+                        Ok(MemOperand {
                             source: curr.source,
                             index: curr.index,
                             scale: curr.scale,
                             displacement: x,
-                        });
+                        })
                     } else {
                         unreachable!("Simplify should prevent this");
                     }
                 }
                 Reg(x) => {
                     if curr.source.is_none() {
-                        return Ok(MemOperand {
+                        Ok(MemOperand {
                             source: Some(x),
                             index: curr.index,
                             scale: curr.scale,
                             displacement: curr.displacement,
-                        });
+                        })
                     } else if curr.index.is_none() {
-                        return Ok(MemOperand {
+                        Ok(MemOperand {
                             source: curr.source,
                             index: Some(x),
                             scale: 1,
                             displacement: curr.displacement,
-                        });
+                        })
                     } else {
-                        return Err(ParseError::InvalidMemExpr(format!("Too many registers")));
+                        Err(ParseError::InvalidMemExpr(format!(
+                            "Too many registers in {}",
+                            tree
+                        )))
                     }
                 }
                 Op(Mul, box Num(x), box Reg(y)) => {
                     if vec![1, 2, 4, 8].contains(&x) && curr.index.is_none() {
-                        return Ok(MemOperand {
+                        Ok(MemOperand {
                             source: curr.source,
                             index: Some(y),
                             scale: x as u8,
                             displacement: curr.displacement,
-                        });
+                        })
                         //power of 2 + 1
                     } else if vec![3, 5, 9].contains(&x)
                         && curr.source.is_none()
                         && curr.index.is_none()
                     {
-                        return Ok(MemOperand {
+                        Ok(MemOperand {
                             source: Some(y),
                             index: Some(y),
                             scale: (x - 1) as u8,
                             displacement: curr.displacement,
-                        });
+                        })
                     } else if curr.scale == 1 && curr.source.is_none() {
-                        return Ok(MemOperand {
+                        Ok(MemOperand {
                             source: curr.index,
                             index: Some(y),
                             scale: x as u8,
                             displacement: curr.displacement,
-                        });
+                        })
                     } else if x == 1 && curr.source.is_none() {
-                        return Ok(MemOperand {
+                        Ok(MemOperand {
                             source: Some(y),
                             index: curr.index,
                             scale: curr.scale,
                             displacement: curr.displacement,
-                        });
+                        })
                     } else {
-                        return Err(ParseError::InvalidMemExpr(format!(
-                            "Too many scaled registers"
-                        )));
+                        Err(ParseError::InvalidMemExpr(format!(
+                            "Too many scaled registers in {}",
+                            tree
+                        )))
                     }
                 }
                 Op(Add, x, y) => Ok(traverse(*y, traverse(*x, curr)?)?),
                 _ => Err(ParseError::InvalidMemExpr(format!(
-                    "Invalid MemOperand from Expr"
+                    "Invalid MemOperand from Expr in {}",
+                    tree,
                 ))),
             }
         }

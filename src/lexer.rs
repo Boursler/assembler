@@ -48,7 +48,7 @@ pub struct Label {
 
 impl fmt::Display for Label {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.name.to_string())
+        write!(f, "{}", self.name)
     }
 }
 impl FromStr for Label {
@@ -57,20 +57,22 @@ impl FromStr for Label {
     fn from_str(s: &str) -> Result<Self, String> {
         let len = s.chars().count();
         if len < 2 {
-            return Err(format!("Empty string is not a label"));
+            return Err("Empty string is not a label".to_string());
         }
 
         for (idx, c) in s.chars().enumerate() {
             if idx == 0 {
                 if !c.is_alphabetic() && !(c == '_') {
-                    return Err(format!("Labels must start with alphabetic character or _"));
-                }
-            } else {
-                if !c.is_alphanumeric() && !(c == '_') {
                     return Err(format!(
-                        "Labels must contain only alphanumeric or _ characters"
+                        "Labels must start with alphabetic character or _ but label is {}",
+                        s
                     ));
                 }
+            } else if !c.is_alphanumeric() && !(c == '_') {
+                return Err(format!(
+                    "Labels must contain only alphanumeric or _ characters but label is {}",
+                    s
+                ));
             }
         }
 

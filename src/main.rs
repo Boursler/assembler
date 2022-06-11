@@ -8,15 +8,14 @@ mod registers;
 mod test_helpers;
 
 use instruction::Instruction;
-use mem_op::MemOperand;
+use lexer::IntoLexer;
 use parse_error::ParseError;
-use registers::Register;
+use parser::{parse, Program};
 use std::env;
-use std::fmt;
+use std::fs;
 use std::fs::File;
 use std::io::prelude::*;
 use std::io::BufReader;
-use std::str::FromStr;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -26,22 +25,12 @@ fn main() {
     }
 
     let filename = &args[1];
-    let file = match File::open(filename) {
-        Ok(file) => file,
-        Err(err) => {
-            println!("Failed to open file {} with error {}", filename, err);
-            return;
-        }
+    let input_string =
+        fs::read_to_string(filename).unwrap_or_else(|_| "default: rsp + 8 * 2\n".to_string());
+    let lexer = input_string.as_str().into_lexer();
+    let program = match parse(lexer) {
+        Ok(t) => t.to_string(),
+        Err(e) => panic!("Parsing resulted in error {}", e),
     };
-
-    let instrs: Vec<Result<Instruction, ParseError>> = BufReader::new(file)
-        .lines()
-        .map(|line| line.unwrap().trim().parse::<Instruction>())
-        .collect();
-    for instr in instrs {
-        match instr {
-            Ok(t) => println!("{}", t),
-            Err(e) => println!("error: {}", e),
-        }
-    }
+    println!("{}", program);
 }
